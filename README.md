@@ -47,7 +47,62 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 4. Start SaldoBoek
+### 4. Configuratiebestanden
+
+SaldoBoek gebruikt een aantal configureerbare YAML- en Python-bestanden om het categoriseren van transacties en het importeren van bankafschriften te vereenvoudigen en uitbreiden:
+
+#### `config/categories.yaml`
+
+Bevat **standaardcategorieën** die eenmalig worden toegevoegd bij het eerste gebruik van een nieuwe gebruiker. Daarna kunnen categorieën beheerd worden via het programma zelf.
+
+- **Structuur**: per categorie:
+  - `naam`: de naam van de categorie
+  - `type`: `"inkomsten"` of `"uitgaven"`
+  - `beschrijving`: optioneel
+
+**Voorbeeld:**
+```yaml
+uitgaven:
+  - naam: "Zorgverzekering"
+    beschrijving: "Premies en eigen bijdragen zorgverzekering"
+
+inkomsten:
+  - naam: "Salaris"
+    beschrijving: "Maandelijkse loonbetaling"
+```
+
+🔁 Je kunt dit bestand uitbreiden vóór het eerste gebruik. Daarna worden wijzigingen in de database bijgehouden.
+
+#### `config/categorization_rules.yaml`
+
+Bevat **zoekregels** voor automatische categorisatie. Als een omschrijving of tegenrekening een van de opgegeven zoekwoorden bevat (niet hoofdlettergevoelig), dan wordt de transactie automatisch toegewezen aan de bijbehorende categorie. Dit wordt eenmalig toegevoegd bij het eerste gebruik van een nieuwe gebruiker. Daarna kunnen categorieën beheerd worden via het programma zelf.
+
+**Voorbeeld**
+```yaml
+zorgverzekering: "Zorgverzekering"
+"albert heijn": "Boodschappen"
+jumbo: "Boodschappen"
+```
+
+✏️  Je kunt dit bestand uitbreiden vóór het eerste gebruik. Daarna worden wijzigingen in de database bijgehouden.
+
+### `config/bank_parsers.py`
+
+Bevat een mapping van banknamen naar parserfuncties voor CSV-bestanden. Hiermee wordt per bank bepaald welke parser moet worden gebruikt.
+
+**Voorbeeld**
+```python
+BANK_PARSERS = {
+    'RABO': 'parse_rabo_csv',
+    'SNS': 'parse_sns_csv',
+    # 'ING': 'parse_ing_csv'
+}
+```
+
+🔄 Je kunt hier eenvoudig extra banken toevoegen door een nieuwe CSV-parserfunctie te schrijven en toe te voegen aan deze mapping. De CSV-parserfuncties staan in `importer.py`
+
+
+### 5. Start SaldoBoek
 
 ```bash
 python main.py
