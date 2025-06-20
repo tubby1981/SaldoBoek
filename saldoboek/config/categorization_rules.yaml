@@ -1,0 +1,180 @@
+# Categorisatie regels voor automatische toewijzing
+# Format: zoekterm -> categorie
+
+# Basis regels
+zorgverzekering: "Zorgverzekering"
+huur: "Huur/Woonlasten"
+"Siloah": "Huur/Woonlasten"
+
+# Supermarkten en boodschappen
+"albert heijn": "Boodschappen"
+jumbo: "Boodschappen"
+lidl: "Boodschappen"
+aldi: "Boodschappen"
+plus: "Boodschappen"
+spar: "Boodschappen"
+coop: "Boodschappen"
+vomar: "Boodschappen"
+dirk: "Boodschappen"
+dekamarkt: "Boodschappen"
+hoogvliet: "Boodschappen"
+nettorama: "Boodschappen"
+picnic: "Boodschappen"
+ekoplaza: "Boodschappen"
+marqt: "Boodschappen"
+"bio planet": "Boodschappen"
+
+# Zorgkosten
+apotheek: "Zorgkosten"
+apotheken: "Zorgkosten"
+ziekenhuis: "Zorgkosten"
+huisarts: "Zorgkosten"
+
+# Inkomsten
+aow: "AOW/Pensioen"
+pensioen: "AOW/Pensioen"
+zorgtoeslag: "Toeslagen"
+huurtoeslag: "Toeslagen"
+rente: "Rente"
+salaris: "Werk/Salaris"
+loon: "Werk/Salaris"
+uwv: "Uitkeringen"
+ww: "Uitkeringen"
+bijstand: "Uitkeringen"
+
+# Telecommunicatie
+vodafone: "Telefoon/Internet"
+kpn: "Telefoon/Internet"
+ziggo: "Telefoon/Internet"
+"t-mobile": "Telefoon/Internet"
+xs4all: "Telefoon/Internet"
+delta: "Telefoon/Internet"
+caiway: "Telefoon/Internet"
+"online.nl": "Telefoon/Internet"
+
+# Vervoer
+ns: "Vervoer"
+"ov-chipkaart": "Vervoer"
+benzine: "Vervoer"
+shell: "Vervoer"
+esso: "Vervoer"
+arriva: "Vervoer"
+connexxion: "Vervoer"
+gvb: "Vervoer"
+ret: "Vervoer"
+uber: "Vervoer"
+taxi: "Vervoer"
+bp: "Vervoer"
+total: "Vervoer"
+texaco: "Vervoer"
+parkeren: "Vervoer"
+
+# Drogisterijen en persoonlijke verzorging
+etos: "Persoonlijke verzorging"
+kruidvat: "Persoonlijke verzorging"
+da: "Persoonlijke verzorging"
+douglas: "Persoonlijke verzorging"
+kapper: "Persoonlijke verzorging"
+tandarts: "Persoonlijke verzorging"
+
+# Kleding winkels
+"h&m": "Kleding"
+zara: "Kleding"
+"c&a": "Kleding"
+primark: "Kleding"
+hema: "Kleding"
+wibra: "Kleding"
+zeeman: "Kleding"
+uniqlo: "Kleding"
+nike: "Kleding"
+adidas: "Kleding"
+zalando: "Kleding"
+"bol.com": "Kleding"
+vinted: "Kleding"
+wehkamp: "Kleding"
+
+# Huishouden en wonen
+ikea: "Huishouden"
+action: "Huishouden"
+blokker: "Huishouden"
+xenos: "Huishouden"
+gamma: "Huishouden"
+karwei: "Huishouden"
+praxis: "Huishouden"
+hornbach: "Huishouden"
+mediamarkt: "Huishouden"
+coolblue: "Huishouden"
+
+# Restaurants en horeca
+mcdonald: "Restaurants/Horeca"
+"burger king": "Restaurants/Horeca"
+kfc: "Restaurants/Horeca"
+dominos: "Restaurants/Horeca"
+"pizza hut": "Restaurants/Horeca"
+thuisbezorgd: "Restaurants/Horeca"
+"uber eats": "Restaurants/Horeca"
+restaurant: "Restaurants/Horeca"
+cafe: "Restaurants/Horeca"
+
+# Abonnementen en entertainment
+netflix: "Abonnementen"
+spotify: "Abonnementen"
+disney: "Abonnementen"
+videoland: "Abonnementen"
+"amazon prime": "Abonnementen"
+"youtube premium": "Abonnementen"
+"pathé": "Recreatie"
+kinepolis: "Recreatie"
+sport: "Recreatie"
+fitness: "Recreatie"
+
+# Verzekeringen
+"centraal beheer": "Verzekeringen"
+"nationale nederlanden": "Verzekeringen"
+aegon: "Verzekeringen"
+unigarant: "Verzekeringen"
+inshared: "Verzekeringen"
+ohra: "Verzekeringen"
+
+# Energie en nuts
+eneco: "Huur/Woonlasten"
+essent: "Huur/Woonlasten"
+vattenfall: "Huur/Woonlasten"
+"budget energie": "Huur/Woonlasten"
+greenchoice: "Huur/Woonlasten"
+liander: "Huur/Woonlasten"
+stedin: "Huur/Woonlasten"
+vitens: "Huur/Woonlasten"
+waternet: "Huur/Woonlasten"
+
+# Banken en financieel
+"Kosten gebruik betaalrekening": "Bankkosten"
+geldmaat: "Zakgeld"
+
+# Overboekingen (uitgaven naar spaarrekening)
+"overboeking naar": "Sparen/Overboeken"
+"overschrijving naar": "Sparen/Overboeken"
+spaarrekening: "Sparen/Overboeken"
+"eigen rekening": "Sparen/Overboeken"
+
+# Overboekingen (inkomsten van spaarrekening)
+"overboeking van": "Overboekingen ontvangen"
+"overschrijving van": "Overboekingen ontvangen"
+"van spaarrekening": "Overboekingen ontvangen"
+
+# Belasting en overheid
+belastingdienst: "Belastingen"
+gemeente: "Belastingen"
+waterschapsbelasting: "Belastingen"
+precario: "Belastingen"
+
+# Online winkels
+amazon: "Overig uitgaven"
+aliexpress: "Overig uitgaven"
+marktplaats: "Overig uitgaven"
+
+# Huisdieren
+dierenarts: "Huisdieren"
+"pets place": "Huisdieren"
+boerenbond: "Huisdieren"
+welkoop: "Huisdieren"

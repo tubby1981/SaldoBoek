@@ -1,0 +1,110 @@
+# Standaard categorieën voor SaldoBoek
+# Format: naam, type (inkomsten/uitgaven), beschrijving
+
+uitgaven:
+  # Basis uitgaven
+  - naam: "Zorgverzekering"
+    beschrijving: "Premies en eigen bijdragen zorgverzekering"
+  
+  - naam: "Huur/Woonlasten"
+    beschrijving: "Huur, servicekosten, nutsvoorzieningen"
+  
+  - naam: "Boodschappen"
+    beschrijving: "Dagelijkse boodschappen en huishoudelijke artikelen"
+  
+  - naam: "Vervoer"
+    beschrijving: "Openbaar vervoer, taxi, benzine"
+  
+  - naam: "Zorgkosten"
+    beschrijving: "Medische kosten, apotheek, hulpmiddelen"
+  
+  - naam: "Kleding"
+    beschrijving: "Kleding en schoenen"
+  
+  - naam: "Recreatie"
+    beschrijving: "Hobby, sport, entertainment"
+  
+  - naam: "Telefoon/Internet"
+    beschrijving: "Abonnementen communicatie"
+  
+  - naam: "Overig uitgaven"
+    beschrijving: "Overige uitgaven"
+
+  # Uitgebreide uitgaven categorieën
+  - naam: "Verzekeringen"
+    beschrijving: "Inboedel, aansprakelijkheid, auto verzekering"
+  
+  - naam: "Huishouden"
+    beschrijving: "Schoonmaakmiddelen, reparaties, gereedschap"
+  
+  - naam: "Persoonlijke verzorging"
+    beschrijving: "Kapper, cosmetica, tandarts"
+  
+  - naam: "Onderwijs/Cursussen"
+    beschrijving: "Boeken, cursussen, opleidingen"
+  
+  - naam: "Abonnementen"
+    beschrijving: "Netflix, Spotify, kranten, tijdschriften"
+  
+  - naam: "Restaurants/Horeca"
+    beschrijving: "Restaurants, cafés, takeaway"
+  
+  - naam: "Cadeaus/Feesten"
+    beschrijving: "Verjaardagscadeaus, feesten, donaties"
+  
+  - naam: "Sparen/Beleggen"
+    beschrijving: "Spaarrekening, beleggingen, pensioenpremie"
+  
+  - naam: "Belastingen"
+    beschrijving: "Inkomstenbelasting, gemeentelijke belastingen"
+  
+  - naam: "Bankkosten"
+    beschrijving: "Rekeningkosten, creditcard kosten"
+  
+  - naam: "Huisdieren"
+    beschrijving: "Voer, dierenarts, verzorging"
+  
+  - naam: "Tuin/Balkon"
+    beschrijving: "Planten, tuinonderhoud, gereedschap"
+  
+  - naam: "Zakgeld"
+    beschrijving: "Pin, Geldmaat"
+  
+  - naam: "Sparen/Overboeken"
+    beschrijving: "Overboekingen naar spaarrekening en andere eigen rekeningen"
+
+inkomsten:
+  # Basis inkomsten
+  - naam: "AOW/Pensioen"
+    beschrijving: "AOW, pensioenuitkeringen"
+  
+  - naam: "Toeslagen"
+    beschrijving: "Zorgtoeslag, huurtoeslag, etc."
+  
+  - naam: "Rente"
+    beschrijving: "Rente op spaargeld"
+  
+  - naam: "Overig inkomsten"
+    beschrijving: "Overige inkomsten"
+  
+  - naam: "Overboekingen ontvangen"
+    beschrijving: "Overboekingen van eigen spaarrekening naar betaalrekening"
+
+  # Uitgebreide inkomsten categorieën
+  - naam: "Werk/Salaris"
+    beschrijving: "Salaris, freelance inkomsten"
+  
+  - naam: "Uitkeringen"
+    beschrijving: "WW, bijstand, WAO/WIA"
+  
+  - naam: "Dividend"
+    beschrijving: "Dividend van aandelen en beleggingen"
+  
+  - naam: "Verkoop"
+    beschrijving: "Verkoop van spullen, Marktplaats"
+  
+  - naam: "Terugbetalingen"
+    beschrijving: "Terugbetaling belasting, verzekeringen"
+  
+  - naam: "Geschenken"
+    beschrijving: "Geldgeschenken, erfenis"

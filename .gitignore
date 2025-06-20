@@ -1,0 +1,4 @@
+saldoboek/data/database.db
+**/__pycache__/
+*.xlsx
+*.csv
