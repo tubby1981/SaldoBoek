@@ -19,6 +19,7 @@ class DatabaseManager:
         # Ensure the data directory exists
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
+        print(f"[DEBUG] Gebruikte database: {self.db_path}")
 
     def _connect(self):
         return sqlite3.connect(self.db_path, timeout=10)
@@ -94,9 +95,11 @@ class DatabaseManager:
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS categorieen (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    naam TEXT UNIQUE,
-                    type TEXT, -- 'inkomsten' of 'uitgaven'
-                    beschrijving TEXT
+                    naam TEXT NOT NULL,
+                    type TEXT,
+                    beschrijving TEXT,
+                    gebruiker_id INTEGER NOT NULL,
+                    UNIQUE(naam, gebruiker_id)
                 )
             ''')
         
@@ -120,11 +123,6 @@ class DatabaseManager:
                 )
             ''')
         
-            # Laad categorieën uit configuratie
-            standaard_categorieen = self._load_categories_config()
-            for cat in standaard_categorieen:
-                cursor.execute('INSERT OR IGNORE INTO categorieen (naam, type, beschrijving) VALUES (?, ?, ?)', cat)
-            
             # Laad categorisatie regels uit configuratie
             standaard_regels = self._load_rules_config()
             for regel in standaard_regels:
@@ -139,8 +137,10 @@ class DatabaseManager:
             
             # Laad en update categorieën
             standaard_categorieen = self._load_categories_config()
-            for cat in standaard_categorieen:
-                cursor.execute('INSERT OR IGNORE INTO categorieen (naam, type, beschrijving) VALUES (?, ?, ?)', cat)
+            for gebruiker in self.get_all_users():
+                gebruiker_id = gebruiker[0]
+                for cat in standaard_categorieen:
+                    cursor.execute('INSERT OR IGNORE INTO categorieen (naam, type, beschrijving, gebruiker_id) VALUES (?, ?, ?, ?)',(*cat, gebruiker_id))
             
             # Laad en update regels
             standaard_regels = self._load_rules_config()
@@ -154,7 +154,7 @@ class DatabaseManager:
         """Haal alle categorieën op"""
         with sqlite3.connect(self.db_path, timeout=10) as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT naam, type, beschrijving FROM categorieen ORDER BY type, naam')
+            cursor.execute('SELECT naam, type, beschrijving FROM categorieen WHERE gebruiker_id = ? ORDER BY type, naam',(gebruiker_id,))
             categorieën = cursor.fetchall()
             return categorieën
 
@@ -272,11 +272,32 @@ class DatabaseManager:
             return pd.read_sql_query(query, conn, params=params or ())
 
     def create_user(self, naam):
-        """Voeg een nieuwe gebruiker toe"""
+        """Voeg een nieuwe gebruiker toe (of gebruik bestaande) en vul standaardcategorieën"""
         with self._connect() as conn:
             cursor = conn.cursor()
-            cursor.execute('INSERT INTO gebruikers (naam) VALUES (?)', (naam,))
+    
+            # Probeer gebruiker toe te voegen
+            cursor.execute('INSERT OR IGNORE INTO gebruikers (naam) VALUES (?)', (naam,))
+            
+            # Haal het ID op
+            cursor.execute('SELECT id FROM gebruikers WHERE naam = ?', (naam,))
+            row = cursor.fetchone()
+            if not row:
+                print(f"Kon geen ID vinden voor gebruiker '{naam}'")
+                return
+            gebruiker_id = row[0]
+    
+            # Voeg standaardcategorieën toe
+            standaard_categorieen = self._load_categories_config()
+            for cat in standaard_categorieen:
+                cursor.execute(
+                    'INSERT OR IGNORE INTO categorieen (naam, type, beschrijving, gebruiker_id) VALUES (?, ?, ?, ?)',
+                    (*cat, gebruiker_id)
+                )
+    
             conn.commit()
+            print(f"Gebruiker '{naam}' actief met ID {gebruiker_id}, categorieën ingesteld.")
+    
 
     def get_all_users(self):
         """Haal alle gebruikers op"""
