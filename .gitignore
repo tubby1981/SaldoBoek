@@ -9,3 +9,6 @@ saldoboek/data/database.db
 *.xlsx
 *.xls
 *.csv
+
+# LibreOffice lock files
+*.~lock.*#
