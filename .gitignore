@@ -9,6 +9,3 @@ saldoboek/data/database.db
 *.xlsx
 *.xls
 *.csv
-
-# Eventueel de hele exportmap uitsluiten
-export/
