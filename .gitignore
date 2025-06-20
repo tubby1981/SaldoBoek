@@ -1,4 +1,14 @@
+# Database-bestand
 saldoboek/data/database.db
+
+# Python cache-bestanden
 **/__pycache__/
+*.py[cod]
+
+# Excel- en CSV-bestanden overal
 *.xlsx
+*.xls
 *.csv
+
+# Eventueel de hele exportmap uitsluiten
+export/

@@ -1,3 +1,7 @@
+import os
+EXPORT_FOLDER = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'export'))
+os.makedirs(EXPORT_FOLDER, exist_ok=True)
+
 class SaldoBoekCLI:
     def __init__(self):
         from .database import DatabaseManager
@@ -37,9 +41,10 @@ class SaldoBoekCLI:
                     continue
                 jaar = int(jaar_input)
                 default_filename = f"{self.huidige_gebruiker_naam.lower().replace(' ', '_')}_jaaroverzicht_{jaar}.xlsx"
-                output_path = input(f"Output bestand (Enter voor '{default_filename}'): ").strip()
+                suggested_path = os.path.join(EXPORT_FOLDER, default_filename)
+                output_path = input(f"Output bestand (Enter voor '{suggested_path}'): ").strip()
                 if not output_path:
-                    output_path = default_filename
+                    output_path = suggested_path
                 self.reports.create_excel_yearly_report(jaar, self.huidige_gebruiker_id, self.huidige_gebruiker_naam, output_path)
             elif keuze == '3':
                 self.db.get_database_stats(self.huidige_gebruiker_id)
