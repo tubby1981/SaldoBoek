@@ -30,7 +30,7 @@ SaldoBoek is uitbreidbaar en volledig in Python geschreven. Categorieën en rege
 ### 1. Clone deze repository
 
 ```bash
-git clone https://github.com/jouw-gebruiker/saldoboek.git
+git clone https://github.com/tubby1981/SaldoBoek.git
 cd saldoboek
 ```
 
