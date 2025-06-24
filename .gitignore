@@ -12,3 +12,6 @@ saldoboek/data/database.db
 
 # LibreOffice lock files
 *.~lock.*#
+
+# Ignore Vim/Neovim swap files
+*.swp
