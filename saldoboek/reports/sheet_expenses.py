@@ -23,6 +23,10 @@ def create_expenses_sheet(wb, df, jaar, suffix=""):
         cell.fill = PatternFill(start_color="FFE6E6", end_color="FFE6E6", fill_type="solid")
 
     totaal_uitgaven = categorie_totalen['Totaal'].sum()
+    totaal_excl = categorie_totalen[~categorie_totalen['Categorie'].isin(['Sparen/Overboeken'])]['Totaal'].sum()
+    aantal = categorie_totalen['Aantal transacties'].sum()
+    aantal_excl = categorie_totalen[~categorie_totalen['Categorie'].isin(['Sparen/Overboeken'])]['Aantal transacties'].sum()
+
     for _, row in categorie_totalen.iterrows():
         ws.append([
             row['Categorie'],
@@ -32,7 +36,9 @@ def create_expenses_sheet(wb, df, jaar, suffix=""):
             row['Totaal'] / totaal_uitgaven
         ])
 
-    ws.append(["TOTAAL", totaal_uitgaven, categorie_totalen['Aantal transacties'].sum(), "", 1.0])
+    ws.append(["TOTAAL (excl. Sparen/Overboeken)", totaal_excl, aantal_excl, "", totaal_excl / totaal_uitgaven])
+    ws.append(["TOTAAL (incl. alles)", totaal_uitgaven, aantal, "", 1.0])
+
     for col in ws.columns:
         max_length = max(len(str(cell.value or "")) for cell in col)
         ws.column_dimensions[get_column_letter(col[0].column)].width = min(max_length + 2, 50)

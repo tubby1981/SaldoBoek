@@ -3,7 +3,7 @@ def create_income_sheet(wb, df, jaar, suffix=""):
     from openpyxl.utils import get_column_letter
 
     ws = wb.create_sheet(f"Inkomsten{suffix}")
-    inkomsten_df = df[df['bedrag'] > 0]
+    inkomsten_df = df[df['bedrag'] > 0].copy()
 
     if inkomsten_df.empty:
         ws['A1'] = "Geen inkomsten gevonden"
@@ -29,13 +29,14 @@ def create_income_sheet(wb, df, jaar, suffix=""):
             row['Totaal'] / row['Aantal transacties']
         ])
 
-    total_row = [
-        "TOTAAL",
-        categorie_totalen['Totaal'].sum(),
-        categorie_totalen['Aantal transacties'].sum(),
-        ""
-    ]
-    ws.append(total_row)
+    totaal = categorie_totalen['Totaal'].sum()
+    totaal_excl = categorie_totalen[~categorie_totalen['Categorie'].isin(['Overboekingen ontvangen'])]['Totaal'].sum()
+    aantal = categorie_totalen['Aantal transacties'].sum()
+    aantal_excl = categorie_totalen[~categorie_totalen['Categorie'].isin(['Overboekingen ontvangen'])]['Aantal transacties'].sum()
+
+    ws.append(["TOTAAL (excl. Overboekingen ontvangen)", totaal_excl, aantal_excl, ""])
+    ws.append(["TOTAAL (incl. alles)", totaal, aantal, ""])
+
     for col in ws.columns:
         max_length = max(len(str(cell.value or "")) for cell in col)
         ws.column_dimensions[get_column_letter(col[0].column)].width = min(max_length + 2, 50)
