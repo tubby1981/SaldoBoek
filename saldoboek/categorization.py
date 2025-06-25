@@ -228,13 +228,11 @@ class Categorizer:
     
         print(f"\nEr zijn {len(df)} ongecategoriseerde transacties.")
     
-        categorieën = self.db.get_categories(self.gebruiker_id)
-        print("\nBeschikbare categorieën:")
-        for i, (cat_naam, cat_type, cat_desc) in enumerate(categorieën, 1):
-            print(f"{i:2d}. {cat_naam} ({cat_type})")
+        # Haal alle categorieën op
+        alle_categorieën = self.db.get_categories(self.gebruiker_id)
     
         print("\nOpties bij elke transactie:")
-        print("- Voer nummer in (1-{}) voor categorie".format(len(categorieën)))
+        print("- Voer nummer in voor categorie")
         print("- 'n' voor nieuwe categorie maken")
         print("- 's' om te skippen (blijft ongecategoriseerd)")
         print("- 'q' om te stoppen met categoriseren")
@@ -247,6 +245,17 @@ class Categorizer:
             print(f"Naam:          {row['naam']}")
             print(f"Omschrijving:  {row['omschrijving']}")
             print(f"Bedrag:        €{row['bedrag']:.2f}")
+            
+            # Filter categorieën op basis van bedrag (positief = inkomsten, negatief = uitgaven)
+            if row['bedrag'] > 0:
+                relevante_categorieën = [c for c in alle_categorieën if c[1] == 'inkomsten']
+                print(f"\nBeschikbare INKOMSTEN categorieën:")
+            else:
+                relevante_categorieën = [c for c in alle_categorieën if c[1] == 'uitgaven']
+                print(f"\nBeschikbare UITGAVEN categorieën:")
+            
+            for i, (cat_naam, cat_type, cat_desc) in enumerate(relevante_categorieën, 1):
+                print(f"{i:2d}. {cat_naam} ({cat_type})")
     
             while True:
                 keuze = input("Categorie keuze: ").strip().lower()
@@ -273,8 +282,8 @@ class Categorizer:
                 else:
                     try:
                         index = int(keuze) - 1
-                        if 0 <= index < len(categorieën):
-                            gekozen = categorieën[index][0]
+                        if 0 <= index < len(relevante_categorieën):
+                            gekozen = relevante_categorieën[index][0]
                             self.db.execute(
                                 "UPDATE transacties SET categorie = ? WHERE id = ? AND gebruiker_id = ?",
                                 (gekozen, row['id'], self.gebruiker_id)
@@ -290,5 +299,3 @@ class Categorizer:
                         print("Ongeldige invoer. Probeer opnieuw.")
     
         print("✓ Categorisatie van alle ongecategoriseerde transacties voltooid.")
-
-

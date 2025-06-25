@@ -105,14 +105,15 @@ class DatabaseManager:
         
             # Categorisatie regels tabel
             cursor.execute('''
-                CREATE TABLE IF NOT EXISTS categorisatie_regels (
+                CREATE TABLE categorisatie_regels (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     gebruiker_id INTEGER,
-                    zoekterm TEXT UNIQUE,
+                    zoekterm TEXT,
                     categorie TEXT,
                     actief BOOLEAN DEFAULT 1,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(zoekterm, gebruiker_id)
+                );
             ''')
             
             # Gebruikers tabel

@@ -102,9 +102,12 @@ inkomsten:
   
   - naam: "Verkoop"
     beschrijving: "Verkoop van spullen, Marktplaats"
-  
-  - naam: "Terugbetalingen"
-    beschrijving: "Terugbetaling belasting, verzekeringen"
-  
+ 
+  - naam: "Terugbetalingen instantie"
+    beschrijving: "Terugbetalingen van overheid, zorgverzekeraar, belastingdienst etc."
+
+  - naam: "Terugbetalingen privé"
+    beschrijving: "Terugbetalingen van familie/vrienden zoals via Tikkie of betaalverzoek"
+      
   - naam: "Geschenken"
     beschrijving: "Geldgeschenken, erfenis"
