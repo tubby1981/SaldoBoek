@@ -105,7 +105,7 @@ class DatabaseManager:
         
             # Categorisatie regels tabel
             cursor.execute('''
-                CREATE TABLE categorisatie_regels (
+                CREATE TABLE IF NOT EXISTS categorisatie_regels (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     gebruiker_id INTEGER,
                     zoekterm TEXT,
