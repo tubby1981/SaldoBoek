@@ -2,7 +2,7 @@
 
 import logging
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -105,8 +105,8 @@ class MainWindow(QMainWindow):
         # Show first view
         self._content_stack.setCurrentIndex(0)
 
-        # Laad transacties
-        self._views["transacties"].load_transactions()
+        # Laad transacties na UI rendering (voorkom freeze)
+        QTimer.singleShot(0, lambda: self._views["transacties"].load_transactions())
 
     def set_gebruiker(self, gebruiker_id, gebruiker_naam):
         """Stel de huidige gebruiker in en update services."""
@@ -206,7 +206,7 @@ class MainWindow(QMainWindow):
         logger.debug("Navigeer naar transacties")
         if "transacties" in self._views:
             self._content_stack.setCurrentWidget(self._views["transacties"])
-            self._views["transacties"].refresh()
+            QTimer.singleShot(0, lambda: self._views["transacties"].refresh())
 
     def _show_import(self):
         """Toon import view."""
