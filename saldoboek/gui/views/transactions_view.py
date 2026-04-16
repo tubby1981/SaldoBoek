@@ -1,6 +1,6 @@
 """TransactionsView - Toon en beheer transacties"""
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -176,7 +176,8 @@ class TransactionsView(QWidget):
 
     def refresh(self):
         """Vernieuw de transacties."""
-        self.load_transactions()
+        self._stats_label.setText("Laden...")
+        QTimer.singleShot(0, self.load_transactions)
 
     def _populate_table(self):
         """Vul de tabel met transacties."""
