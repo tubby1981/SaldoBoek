@@ -33,28 +33,29 @@ class Categorizer:
                 return categorie
         return None
 
-    def create_new_category(self):
-        """Maak nieuwe categorie aan"""
-        print("\n--- Nieuwe categorie maken ---")
-        naam = input("Categorie naam: ").strip()
+    def create_new_category(self, naam, cat_type, beschrijving=""):
+        """Maak nieuwe categorie aan.
+
+        Args:
+            naam: Naam van de categorie
+            cat_type: 'inkomsten' of 'uitgaven'
+            beschrijving: Optionele beschrijving
+
+        Returns:
+            Naam van toegevoegde categorie, of None bij fout
+        """
         if not naam:
             return None
-
-        print("Type: 1=inkomsten, 2=uitgaven")
-        type_keuze = input("Type (1/2): ").strip()
-        cat_type = "inkomsten" if type_keuze == "1" else "uitgaven"
-
-        beschrijving = input("Beschrijving (optioneel): ").strip()
 
         try:
             self.db.execute(
                 "INSERT INTO categorieen (naam, type, beschrijving, gebruiker_id) VALUES (?, ?, ?, ?)",
                 (naam, cat_type, beschrijving, self.gebruiker_id),
             )
-            print(f"✓ Categorie '{naam}' toegevoegd")
+            logger.info("Categorie '%s' toegevoegd", naam)
             return naam
-        except:
-            print(f"! Categorie '{naam}' bestaat al")
+        except Exception as e:
+            logger.warning("Categorie '%s' kon niet toegevoegd worden: %s", naam, e)
             return None
 
     def add_categorization_rule(self, zoekterm, categorie):
