@@ -1,6 +1,6 @@
 """TransactionsView - Toon en beheer transacties met threading"""
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import QCoreApplication, Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -234,46 +234,65 @@ class TransactionsView(QWidget):
         self.load_transactions()
 
     def _populate_table(self):
-        """Vul de tabel met transacties."""
-        self._table.setRowCount(len(self._transactions))
+        """Vul de tabel met transacties (in batches voor performance)."""
+        total_rows = len(self._transactions)
 
-        for row, trans in enumerate(self._transactions):
-            # Datum
-            datum_item = QTableWidgetItem(str(trans.get("datum", "")))
-            datum_item.setData(Qt.UserRole, trans.get("id"))
-            self._table.setItem(row, 0, datum_item)
+        # Disable updates tijdens populatie voor betere performance
+        self._table.setUpdatesEnabled(False)
+        self._table.setRowCount(total_rows)
 
-            # Rekening
-            rekening = str(trans.get("rekening", ""))
-            self._table.setItem(row, 1, QTableWidgetItem(rekening))
+        BATCH_SIZE = 100  # Processeer 100 rijen tegelijk
 
-            # Naam
-            self._table.setItem(row, 2, QTableWidgetItem(str(trans.get("naam", ""))))
+        for batch_start in range(0, total_rows, BATCH_SIZE):
+            batch_end = min(batch_start + BATCH_SIZE, total_rows)
 
-            # Omschrijving
-            self._table.setItem(
-                row, 3, QTableWidgetItem(str(trans.get("omschrijving", "")))
-            )
+            for row in range(batch_start, batch_end):
+                trans = self._transactions[row]
 
-            # Bedrag
-            bedrag = trans.get("bedrag", 0)
-            bedrag_item = QTableWidgetItem(f"€{bedrag:,.2f}")
-            if bedrag < 0:
-                bedrag_item.setForeground(Qt.red)
-            else:
-                bedrag_item.setForeground(Qt.darkGreen)
-            self._table.setItem(row, 4, bedrag_item)
+                # Datum
+                datum_item = QTableWidgetItem(str(trans.get("datum", "")))
+                datum_item.setData(Qt.UserRole, trans.get("id"))
+                self._table.setItem(row, 0, datum_item)
 
-            # Saldo
-            saldo = trans.get("saldo_voor", 0)
-            self._table.setItem(row, 5, QTableWidgetItem(f"€{saldo:,.2f}"))
+                # Rekening
+                rekening = str(trans.get("rekening", ""))
+                self._table.setItem(row, 1, QTableWidgetItem(rekening))
 
-            # Categorie
-            categorie = str(trans.get("categorie", "Ongecategoriseerd"))
-            categorie_item = QTableWidgetItem(categorie)
-            if categorie == "Ongecategoriseerd":
-                categorie_item.setForeground(Qt.gray)
-            self._table.setItem(row, 6, categorie_item)
+                # Naam
+                self._table.setItem(
+                    row, 2, QTableWidgetItem(str(trans.get("naam", "")))
+                )
+
+                # Omschrijving
+                self._table.setItem(
+                    row, 3, QTableWidgetItem(str(trans.get("omschrijving", "")))
+                )
+
+                # Bedrag
+                bedrag = trans.get("bedrag", 0)
+                bedrag_item = QTableWidgetItem(f"€{bedrag:,.2f}")
+                if bedrag < 0:
+                    bedrag_item.setForeground(Qt.red)
+                else:
+                    bedrag_item.setForeground(Qt.darkGreen)
+                self._table.setItem(row, 4, bedrag_item)
+
+                # Saldo
+                saldo = trans.get("saldo_voor", 0)
+                self._table.setItem(row, 5, QTableWidgetItem(f"€{saldo:,.2f}"))
+
+                # Categorie
+                categorie = str(trans.get("categorie", "Ongecategoriseerd"))
+                categorie_item = QTableWidgetItem(categorie)
+                if categorie == "Ongecategoriseerd":
+                    categorie_item.setForeground(Qt.gray)
+                self._table.setItem(row, 6, categorie_item)
+
+            # Laat de UI even ademen tussen batches
+            QCoreApplication.processEvents()
+
+        # Herinschakelen updates en forceer refresh
+        self._table.setUpdatesEnabled(True)
 
     def _update_stats(self):
         """Update de statistieken balk."""
