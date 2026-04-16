@@ -189,12 +189,12 @@ class Categorizer:
             query = "SELECT * FROM transacties WHERE gebruiker_id = ?"
         elif keuze == '3':
             categorie = input("Welke categorie hercategoriseren? ").strip()
-            query = f"SELECT * FROM transacties WHERE categorie = '{categorie}' AND gebruiker_id = ?"
+            query = "SELECT * FROM transacties WHERE categorie = ? AND gebruiker_id = ?"
         else:
             print("Ongeldige keuze.")
             return
         
-        df = self.db.query_df(query, (self.gebruiker_id,))  # Veronderstel dat `db.query_df` een pandas DataFrame retourneert
+        df = self.db.query_df(query, (categorie, self.gebruiker_id))  # Veronderstel dat `db.query_df` een pandas DataFrame retourneert
         
         if df.empty:
             print("Geen transacties gevonden om te hercategoriseren.")
