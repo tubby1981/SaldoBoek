@@ -15,3 +15,7 @@ saldoboek/data/database.db
 
 # Ignore Vim/Neovim swap files
 *.swp
+
+# Virtual environment
+venv/
+.venv/
