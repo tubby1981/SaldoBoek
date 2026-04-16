@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 class TransactionService:
     """Service voor transactie-gerelateerde operaties."""
 
-    def __init__(self, db_manager, categorizer, importer):
+    def __init__(self, db_manager, categorizer, importer, gebruiker_id=None):
         """
         Initialiseer TransactionService.
 
@@ -16,10 +16,12 @@ class TransactionService:
             db_manager: DatabaseManager instantie
             categorizer: Categorizer instantie
             importer: TransactionImporter instantie
+            gebruiker_id: Gebruiker ID voor transactie isolatie
         """
         self._db = db_manager
         self._categorizer = categorizer
         self._importer = importer
+        self._gebruiker_id = gebruiker_id
 
     def get_transactions(self, filters=None, gebruiker_id=None):
         """
@@ -40,9 +42,13 @@ class TransactionService:
         query = "SELECT * FROM transacties WHERE 1=1"
         params = []
 
-        if gebruiker_id is not None:
+        # Gebruik meegegeven gebruiker_id of fallback naar service instance gebruiker_id
+        effective_gebruiker_id = (
+            gebruiker_id if gebruiker_id is not None else self._gebruiker_id
+        )
+        if effective_gebruiker_id is not None:
             query += " AND gebruiker_id = ?"
-            params.append(gebruiker_id)
+            params.append(effective_gebruiker_id)
 
         if filters:
             if "jaar" in filters and filters["jaar"]:

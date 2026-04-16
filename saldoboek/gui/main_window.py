@@ -41,11 +41,7 @@ class MainWindow(QMainWindow):
 
     def _init_services(self):
         """Initialiseer services voor de GUI."""
-        from saldoboek.core.categorization import Categorizer
         from saldoboek.core.database import DatabaseManager
-        from saldoboek.core.importer import TransactionImporter
-        from saldoboek.services.category_service import CategoryService
-        from saldoboek.services.transaction_service import TransactionService
 
         self._db = DatabaseManager()
         self._gebruiker_id = None
@@ -109,6 +105,9 @@ class MainWindow(QMainWindow):
         # Show first view
         self._content_stack.setCurrentIndex(0)
 
+        # Laad transacties
+        self._views["transacties"].load_transactions()
+
     def set_gebruiker(self, gebruiker_id, gebruiker_naam):
         """Stel de huidige gebruiker in en update services."""
         self._gebruiker_id = gebruiker_id
@@ -116,7 +115,7 @@ class MainWindow(QMainWindow):
         self._categorizer = Categorizer(self._db, gebruiker_id)
         self._importer = TransactionImporter(self._categorizer, self._db, gebruiker_id)
         self._transaction_service = TransactionService(
-            self._db, self._categorizer, self._importer
+            self._db, self._categorizer, self._importer, gebruiker_id
         )
         self._category_service = CategoryService(self._db, self._categorizer)
 
@@ -207,6 +206,7 @@ class MainWindow(QMainWindow):
         logger.debug("Navigeer naar transacties")
         if "transacties" in self._views:
             self._content_stack.setCurrentWidget(self._views["transacties"])
+            self._views["transacties"].refresh()
 
     def _show_import(self):
         """Toon import view."""
