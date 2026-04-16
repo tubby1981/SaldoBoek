@@ -1,6 +1,6 @@
-"""TransactionsView - Toon en beheer transacties"""
+"""TransactionsView - Toon en beheer transacties met threading"""
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -9,12 +9,36 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QProgressBar,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+
+
+class TransactionsLoader(QThread):
+    """Thread voor laden van transacties uit database."""
+
+    finished = Signal(object)  # DataFrame met transacties
+    error = Signal(str)  # Error message
+    progress = Signal(int)  # Progress percentage
+
+    def __init__(self, transaction_service, filters=None):
+        super().__init__()
+        self._service = transaction_service
+        self._filters = filters or {}
+
+    def run(self):
+        """Voer de query uit in de achtergrondthread."""
+        try:
+            self.progress.emit(10)
+            df = self._service.get_transactions(filters=self._filters)
+            self.progress.emit(100)
+            self.finished.emit(df)
+        except Exception as e:
+            self.error.emit(str(e))
 
 
 class TransactionsView(QWidget):
@@ -28,6 +52,7 @@ class TransactionsView(QWidget):
         self._transaction_service = transaction_service
         self._current_filters = {}
         self._transactions = []
+        self._loader = None
         self._setup_ui()
         self._setup_table()
 
@@ -47,11 +72,18 @@ class TransactionsView(QWidget):
 
         header_layout.addStretch()
 
+        # Progress bar (hidden by default)
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setObjectName("progress_bar")
+        self._progress_bar.setVisible(False)
+        self._progress_bar.setMaximumWidth(200)
+        header_layout.addWidget(self._progress_bar)
+
         # Refresh button
-        refresh_btn = QPushButton("🔄 Verversen")
-        refresh_btn.setObjectName("refresh_button")
-        refresh_btn.clicked.connect(self.refresh)
-        header_layout.addWidget(refresh_btn)
+        self._refresh_btn = QPushButton("🔄 Verversen")
+        self._refresh_btn.setObjectName("refresh_button")
+        self._refresh_btn.clicked.connect(self.refresh)
+        header_layout.addWidget(self._refresh_btn)
 
         layout.addWidget(header)
 
@@ -152,32 +184,54 @@ class TransactionsView(QWidget):
         header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
 
     def load_transactions(self, filters=None):
-        """Laad transacties met optionele filters."""
+        """Laad transacties met optionele filters (async)."""
         if filters:
             self._current_filters.update(filters)
 
-        try:
-            df = self._transaction_service.get_transactions(
-                filters=self._current_filters
-            )
+        # Annuleer vorige loader als die nog draait
+        if self._loader is not None and self._loader.isRunning():
+            self._loader.quit()
+            self._loader.wait()
 
-            if df is None or df.empty:
-                self._transactions = []
-                self._populate_table()
-                self._update_stats()
-                return
+        # Disable refresh button tijdens laden
+        self._refresh_btn.setEnabled(False)
+        self._progress_bar.setVisible(True)
+        self._progress_bar.setValue(10)
+        self._stats_label.setText("Laden...")
 
-            self._transactions = df.to_dict("records")
+        # Start nieuwe loader thread
+        self._loader = TransactionsLoader(
+            self._transaction_service, self._current_filters
+        )
+        self._loader.finished.connect(self._on_load_finished)
+        self._loader.error.connect(self._on_load_error)
+        self._loader.progress.connect(self._progress_bar.setValue)
+        self._loader.start()
+
+    def _on_load_finished(self, df):
+        """Handle load finished callback."""
+        self._progress_bar.setVisible(False)
+        self._refresh_btn.setEnabled(True)
+
+        if df is None or df.empty:
+            self._transactions = []
             self._populate_table()
             self._update_stats()
+            return
 
-        except Exception as e:
-            self._stats_label.setText(f"Fout bij laden: {e}")
+        self._transactions = df.to_dict("records")
+        self._populate_table()
+        self._update_stats()
+
+    def _on_load_error(self, error_msg):
+        """Handle load error callback."""
+        self._progress_bar.setVisible(False)
+        self._refresh_btn.setEnabled(True)
+        self._stats_label.setText(f"Fout bij laden: {error_msg}")
 
     def refresh(self):
-        """Vernieuw de transacties."""
-        self._stats_label.setText("Laden...")
-        QTimer.singleShot(0, self.load_transactions)
+        """Vernieuw de transacties (async)."""
+        self.load_transactions()
 
     def _populate_table(self):
         """Vul de tabel met transacties."""
