@@ -1,6 +1,6 @@
-"""TransactionsView - Toon en beheer transacties met threading"""
+"""TransactionsView - Toon en beheer transacties met paginering"""
 
-from PySide6.QtCore import QCoreApplication, Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -17,13 +17,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+# Aantal transacties per pagina
+PAGE_SIZE = 100
+
 
 class TransactionsLoader(QThread):
     """Thread voor laden van transacties uit database."""
 
     finished = Signal(object)  # DataFrame met transacties
     error = Signal(str)  # Error message
-    progress = Signal(int)  # Progress percentage
+    count_updated = Signal(int)  # Totaal aantal
 
     def __init__(self, transaction_service, filters=None):
         super().__init__()
@@ -33,25 +36,27 @@ class TransactionsLoader(QThread):
     def run(self):
         """Voer de query uit in de achtergrondthread."""
         try:
-            self.progress.emit(10)
+            # Haal alleen het totaal op voor de paginering
             df = self._service.get_transactions(filters=self._filters)
-            self.progress.emit(100)
+            self.count_updated.emit(len(df) if df is not None else 0)
             self.finished.emit(df)
         except Exception as e:
             self.error.emit(str(e))
 
 
 class TransactionsView(QWidget):
-    """View voor het tonen en beheren van transacties."""
+    """View voor het tonen en beheren van transacties met paginering."""
 
-    transaction_selected = Signal(int)  # transactie_id
-    category_change_requested = Signal(int, str)  # transactie_id, nieuwe_categorie
+    transaction_selected = Signal(int)
+    category_change_requested = Signal(int, str)
 
     def __init__(self, transaction_service, parent=None):
         super().__init__(parent)
         self._transaction_service = transaction_service
         self._current_filters = {}
-        self._transactions = []
+        self._all_transactions = []  # Alle transacties (gefilt)
+        self._current_page = 0
+        self._total_count = 0
         self._loader = None
         self._setup_ui()
         self._setup_table()
@@ -76,7 +81,7 @@ class TransactionsView(QWidget):
         self._progress_bar = QProgressBar()
         self._progress_bar.setObjectName("progress_bar")
         self._progress_bar.setVisible(False)
-        self._progress_bar.setMaximumWidth(200)
+        self._progress_bar.setMaximumWidth(150)
         header_layout.addWidget(self._progress_bar)
 
         # Refresh button
@@ -138,16 +143,42 @@ class TransactionsView(QWidget):
         filters_layout.addWidget(search_label)
         self._search_input = QLineEdit()
         self._search_input.setObjectName("search_input")
-        self._search_input.setPlaceholderText("Zoek in omschrijving of naam...")
+        self._search_input.setPlaceholderText("Zoek...")
         self._search_input.textChanged.connect(self._on_filter_changed)
         filters_layout.addWidget(self._search_input)
 
         layout.addWidget(filters_frame)
 
-        # Stats bar
-        self._stats_label = QLabel("Geen transacties geladen")
+        # Paginering controls
+        pagination_frame = QFrame()
+        pagination_layout = QHBoxLayout(pagination_frame)
+
+        # Previous button
+        self._prev_btn = QPushButton("◀ Vorige")
+        self._prev_btn.setObjectName("prev_button")
+        self._prev_btn.clicked.connect(self._prev_page)
+        pagination_layout.addWidget(self._prev_btn)
+
+        # Page indicator
+        self._page_label = QLabel("Geen data")
+        self._page_label.setObjectName("page_label")
+        self._page_label.setAlignment(Qt.AlignCenter)
+        pagination_layout.addWidget(self._page_label)
+
+        # Next button
+        self._next_btn = QPushButton("Volgende ▶")
+        self._next_btn.setObjectName("next_button")
+        self._next_btn.clicked.connect(self._next_page)
+        pagination_layout.addWidget(self._next_btn)
+
+        pagination_layout.addStretch()
+
+        # Stats label
+        self._stats_label = QLabel("")
         self._stats_label.setObjectName("stats_label")
-        layout.addWidget(self._stats_label)
+        pagination_layout.addWidget(self._stats_label)
+
+        layout.addWidget(pagination_frame)
 
         # Table
         self._table = QTableWidget()
@@ -171,32 +202,33 @@ class TransactionsView(QWidget):
         self._table.setAlternatingRowColors(True)
         layout.addWidget(self._table)
 
+        # Initial state
+        self._update_pagination_buttons()
+
     def _setup_table(self):
         """Configureer de tabel eigenschappen."""
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.Fixed)
-        header.setSectionResizeMode(2, QHeaderView.Stretch)
         header.setSectionResizeMode(3, QHeaderView.Stretch)
         header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
 
     def load_transactions(self, filters=None):
-        """Laad transacties met optionele filters (async)."""
+        """Laad alle transacties (filtered) - paginering wordt daarna toegepast."""
         if filters:
             self._current_filters.update(filters)
 
         # Annuleer vorige loader als die nog draait
         if self._loader is not None and self._loader.isRunning():
             self._loader.quit()
-            self._loader.wait()
 
         # Disable refresh button tijdens laden
         self._refresh_btn.setEnabled(False)
         self._progress_bar.setVisible(True)
-        self._progress_bar.setValue(10)
+        self._progress_bar.setValue(30)
         self._stats_label.setText("Laden...")
 
         # Start nieuwe loader thread
@@ -205,8 +237,13 @@ class TransactionsView(QWidget):
         )
         self._loader.finished.connect(self._on_load_finished)
         self._loader.error.connect(self._on_load_error)
-        self._loader.progress.connect(self._progress_bar.setValue)
+        self._loader.count_updated.connect(self._on_count_updated)
         self._loader.start()
+
+    def _on_count_updated(self, total_count):
+        """Update totaal aantal na laden."""
+        self._total_count = total_count
+        self._current_page = 0
 
     def _on_load_finished(self, df):
         """Handle load finished callback."""
@@ -214,14 +251,15 @@ class TransactionsView(QWidget):
         self._refresh_btn.setEnabled(True)
 
         if df is None or df.empty:
-            self._transactions = []
-            self._populate_table()
-            self._update_stats()
-            return
+            self._all_transactions = []
+            self._current_page = 0
+            self._total_count = 0
+        else:
+            self._all_transactions = df.to_dict("records")
+            self._current_page = 0
 
-        self._transactions = df.to_dict("records")
-        self._populate_table()
-        self._update_stats()
+        # Toon eerste pagina
+        self._show_page()
 
     def _on_load_error(self, error_msg):
         """Handle load error callback."""
@@ -229,88 +267,131 @@ class TransactionsView(QWidget):
         self._refresh_btn.setEnabled(True)
         self._stats_label.setText(f"Fout bij laden: {error_msg}")
 
-    def refresh(self):
-        """Vernieuw de transacties (async)."""
-        self.load_transactions()
+    def _show_page(self):
+        """Toon de huidige pagina van transacties."""
+        total_pages = max(1, (len(self._all_transactions) + PAGE_SIZE - 1) // PAGE_SIZE)
 
-    def _populate_table(self):
-        """Vul de tabel met transacties (in batches voor performance)."""
-        total_rows = len(self._transactions)
+        # Clamp current page
+        if self._current_page >= total_pages:
+            self._current_page = total_pages - 1
+        if self._current_page < 0:
+            self._current_page = 0
 
-        # Disable updates tijdens populatie voor betere performance
+        # Bereken start en end indices
+        start_idx = self._current_page * PAGE_SIZE
+        end_idx = min(start_idx + PAGE_SIZE, len(self._all_transactions))
+
+        # Get page data
+        page_data = self._all_transactions[start_idx:end_idx]
+
+        # Populate table
         self._table.setUpdatesEnabled(False)
-        self._table.setRowCount(total_rows)
+        self._table.setRowCount(len(page_data))
 
-        BATCH_SIZE = 100  # Processeer 100 rijen tegelijk
+        for row, trans in enumerate(page_data):
+            # Datum
+            datum_item = QTableWidgetItem(str(trans.get("datum", "")))
+            datum_item.setData(Qt.UserRole, trans.get("id"))
+            self._table.setItem(row, 0, datum_item)
 
-        for batch_start in range(0, total_rows, BATCH_SIZE):
-            batch_end = min(batch_start + BATCH_SIZE, total_rows)
+            # Rekening
+            rekening = str(trans.get("rekening", ""))
+            self._table.setItem(row, 1, QTableWidgetItem(rekening))
 
-            for row in range(batch_start, batch_end):
-                trans = self._transactions[row]
+            # Naam
+            self._table.setItem(row, 2, QTableWidgetItem(str(trans.get("naam", ""))))
 
-                # Datum
-                datum_item = QTableWidgetItem(str(trans.get("datum", "")))
-                datum_item.setData(Qt.UserRole, trans.get("id"))
-                self._table.setItem(row, 0, datum_item)
+            # Omschrijving
+            self._table.setItem(
+                row, 3, QTableWidgetItem(str(trans.get("omschrijving", "")))
+            )
 
-                # Rekening
-                rekening = str(trans.get("rekening", ""))
-                self._table.setItem(row, 1, QTableWidgetItem(rekening))
+            # Bedrag
+            bedrag = trans.get("bedrag", 0)
+            bedrag_item = QTableWidgetItem(f"€{bedrag:,.2f}")
+            if bedrag < 0:
+                bedrag_item.setForeground(Qt.red)
+            else:
+                bedrag_item.setForeground(Qt.darkGreen)
+            self._table.setItem(row, 4, bedrag_item)
 
-                # Naam
-                self._table.setItem(
-                    row, 2, QTableWidgetItem(str(trans.get("naam", "")))
-                )
+            # Saldo
+            saldo = trans.get("saldo_voor", 0)
+            self._table.setItem(row, 5, QTableWidgetItem(f"€{saldo:,.2f}"))
 
-                # Omschrijving
-                self._table.setItem(
-                    row, 3, QTableWidgetItem(str(trans.get("omschrijving", "")))
-                )
+            # Categorie
+            categorie = str(trans.get("categorie", "Ongecategoriseerd"))
+            categorie_item = QTableWidgetItem(categorie)
+            if categorie == "Ongecategoriseerd":
+                categorie_item.setForeground(Qt.gray)
+            self._table.setItem(row, 6, categorie_item)
 
-                # Bedrag
-                bedrag = trans.get("bedrag", 0)
-                bedrag_item = QTableWidgetItem(f"€{bedrag:,.2f}")
-                if bedrag < 0:
-                    bedrag_item.setForeground(Qt.red)
-                else:
-                    bedrag_item.setForeground(Qt.darkGreen)
-                self._table.setItem(row, 4, bedrag_item)
-
-                # Saldo
-                saldo = trans.get("saldo_voor", 0)
-                self._table.setItem(row, 5, QTableWidgetItem(f"€{saldo:,.2f}"))
-
-                # Categorie
-                categorie = str(trans.get("categorie", "Ongecategoriseerd"))
-                categorie_item = QTableWidgetItem(categorie)
-                if categorie == "Ongecategoriseerd":
-                    categorie_item.setForeground(Qt.gray)
-                self._table.setItem(row, 6, categorie_item)
-
-            # Laat de UI even ademen tussen batches
-            QCoreApplication.processEvents()
-
-        # Herinschakelen updates en forceer refresh
         self._table.setUpdatesEnabled(True)
+
+        # Update pagination controls
+        self._update_pagination_controls(total_pages)
+
+        # Update stats
+        self._update_stats()
+
+    def _update_pagination_controls(self, total_pages):
+        """Update paginering controls."""
+        if not self._all_transactions:
+            self._page_label.setText("Geen transacties")
+            self._prev_btn.setEnabled(False)
+            self._next_btn.setEnabled(False)
+            return
+
+        start_idx = self._current_page * PAGE_SIZE + 1
+        end_idx = min((self._current_page + 1) * PAGE_SIZE, len(self._all_transactions))
+
+        self._page_label.setText(
+            f"Transacties {start_idx}-{end_idx} van {len(self._all_transactions)} (Pagina {self._current_page + 1} van {total_pages})"
+        )
+
+        self._prev_btn.setEnabled(self._current_page > 0)
+        self._next_btn.setEnabled(self._current_page < total_pages - 1)
+
+    def _update_pagination_buttons(self):
+        """Initiele pagination button state."""
+        self._prev_btn.setEnabled(False)
+        self._next_btn.setEnabled(False)
+        self._page_label.setText("Geen data")
+
+    def _prev_page(self):
+        """Ga naar vorige pagina."""
+        if self._current_page > 0:
+            self._current_page -= 1
+            self._show_page()
+
+    def _next_page(self):
+        """Ga naar volgende pagina."""
+        total_pages = (len(self._all_transactions) + PAGE_SIZE - 1) // PAGE_SIZE
+        if self._current_page < total_pages - 1:
+            self._current_page += 1
+            self._show_page()
 
     def _update_stats(self):
         """Update de statistieken balk."""
-        count = len(self._transactions)
-        if count == 0:
-            self._stats_label.setText("Geen transacties gevonden")
+        if not self._all_transactions:
             return
 
-        total_in = sum(
-            t.get("bedrag", 0) for t in self._transactions if t.get("bedrag", 0) > 0
-        )
-        total_out = sum(
-            t.get("bedrag", 0) for t in self._transactions if t.get("bedrag", 0) < 0
-        )
+        # Bereken stats voor huidige pagina
+        start_idx = self._current_page * PAGE_SIZE
+        end_idx = min(start_idx + PAGE_SIZE, len(self._all_transactions))
+        page_data = self._all_transactions[start_idx:end_idx]
+
+        total_in = sum(t.get("bedrag", 0) for t in page_data if t.get("bedrag", 0) > 0)
+        total_out = sum(t.get("bedrag", 0) for t in page_data if t.get("bedrag", 0) < 0)
 
         self._stats_label.setText(
-            f"{count} transacties | Totaal in: €{total_in:,.2f} | Totaal uit: €{abs(total_out):,.2f}"
+            f"Pagina: €{total_in:,.2f} in | €{abs(total_out):,.2f} uit"
         )
+
+    def refresh(self):
+        """Vernieuw de transacties (herlaad alles)."""
+        self._stats_label.setText("Laden...")
+        self.load_transactions()
 
     def _on_filter_changed(self):
         """Handle filter wijzigingen."""
