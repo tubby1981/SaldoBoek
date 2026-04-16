@@ -14,6 +14,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from saldoboek.core.categorization import Categorizer
+from saldoboek.core.importer import TransactionImporter
+from saldoboek.services.category_service import CategoryService
+from saldoboek.services.transaction_service import TransactionService
+
 logger = logging.getLogger(__name__)
 
 
@@ -60,7 +65,7 @@ class MainWindow(QMainWindow):
         dialog = UserSelectionDialog(self._db, self)
         dialog.user_selected.connect(self._on_user_selected)
 
-        if dialog.exec() != dialog.Accepted:
+        if dialog.exec() != dialog.accepted:
             # Gebruiker heeft geannuleerd, sluit applicatie
             logger.info("Geen gebruiker geselecteerd, sluit applicatie")
             self.close()

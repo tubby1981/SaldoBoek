@@ -1,3 +1,4 @@
 pandas
 openpyxl
 PySide6
+pyyaml
