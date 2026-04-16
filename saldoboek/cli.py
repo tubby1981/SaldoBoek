@@ -6,7 +6,7 @@ os.makedirs(EXPORT_FOLDER, exist_ok=True)
 
 class SaldoBoekCLI:
     def __init__(self):
-        from .database import DatabaseManager
+        from .core.database import DatabaseManager
 
         self.db = DatabaseManager()
         self.huidige_gebruiker_id = None
@@ -15,8 +15,8 @@ class SaldoBoekCLI:
     def run(self):
         self.select_user()
 
-        from .categorization import Categorizer
-        from .importer import TransactionImporter
+        from .core.categorization import Categorizer
+        from .core.importer import TransactionImporter
         from .reports import ReportGenerator
 
         self.categorizer = Categorizer(self.db, self.huidige_gebruiker_id)
