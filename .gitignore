@@ -1,6 +1,14 @@
 # Database-bestand
 saldoboek/data/database.db
 
+# Export map (dynamische rapporten)
+export/
+
+# AI assistant config bestanden
+.cursorrules
+.claude/
+.CLAUDE.md
+
 # Python cache-bestanden
 **/__pycache__/
 *.py[cod]

@@ -1,165 +1,233 @@
 # 💰 SaldoBoek
 
-**SaldoBoek** is een Nederlandstalige Python-tool voor het beheren, analyseren en rapporteren van persoonlijke financiën. Ideaal voor bijvoorbeeld bewindvoering, budgetbeheer of het maken van jaaroverzichten van banktransacties.
+**Gratis Nederlandstalig financieel beheerprogramma** voor het beheren van persoonlijke financiën, budgetbeheer en het maken van overzichten van je banktransacties.
 
-SaldoBoek ondersteunt het importeren van bankafschriften (CSV), het automatisch en handmatig categoriseren van inkomsten/uitgaven, en het genereren van uitgebreide Excel-jaaroverzichten per gebruiker.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-green.svg)](https://www.python.org/downloads/)
+[![Platform: Windows, Linux, macOS](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 
----
-
-## 🔧 Functionaliteiten
-
-- ✅ Meerdere gebruikers (zonder wachtwoord, handig bij bewindvoering of gezinsbeheer)
-- ✅ Meerdere bankrekeningen per gebruiker
-- ✅ **Importeer banktransacties** van SNS, Rabobank en andere banken (mits CSV-structuur ondersteund wordt)
-- ✅ **Automatische categorisatie** op basis van herkenbare regels
-- ✅ **Handmatige categorisatie en categoriebeheer**
-- ✅ **Interactieve CLI-interface** (Command Line Interface)
-- ✅ **Jaarlijkse Excel-rapportage**, met o.a.:
-  - 📈 Inkomsten en uitgaven per categorie
-  - 📊 Maandelijks saldo en balans
-  - 📄 Alle transacties met filters
-  - 🧾 Rekeningoverzicht en totalen
-  - 🔀 Optioneel gesplitst per rekening
+**SaldoBoek** is ideaal voor persoonlijk budgetbeheer, financiële administratie, bewindvoering, of het maken van jaaroverzichten van al je banktransacties.
 
 ---
 
-SaldoBoek is uitbreidbaar en volledig in Python geschreven. Categorieën en regels zijn eenvoudig te beheren via YAML-bestanden. Later kunnen pakketten (.deb, .exe) of een GUI worden toegevoegd.
+## 📸 Screenshots
 
-## 🛠️ Installatie-instructies
+### Gebruiker Selecteren
+![Gebruiker](docs/screenshots/user_select.png)
+*Meerdere gebruikers op één installatie*
 
-### 1. Clone deze repository
+### Transacties Overzicht
+![Transacties](docs/screenshots/transactions.png)
+*Overzicht van al je geïmporteerde transacties met zoek- en filterfunctie*
 
+### Import
+![Import](docs/screenshots/import.png)
+*Importeer eenvoudig je banktransacties via drag-and-drop*
+
+### Statistieken
+![Statistieken](docs/screenshots/statistics.png)
+*Interactieve grafieken met inkomsten, uitgaven en categorieverdeling*
+
+### Ongecategoriseerde Transacties
+![Ongecategoriseerd](docs/screenshots/uncategorized.png)
+*Categoriseer transacties die nog geen categorie hebben*
+
+### Categorieën Beheren
+![Categorieën](docs/screenshots/categories.png)
+*Beheer je eigen categorieën en categorisatieregels*
+
+### Categorisatie Dialoog
+![Categoriseer](docs/screenshots/categorize_dialog.png)
+*Wijs een categorie toe en maakregels voor toekomstige herkenning*
+
+### Rapportages
+![Rapportages](docs/screenshots/reports.png)
+*Exporteer naar Excel voor verdere analyse*
+
+---
+
+## ✨ Features
+
+### Gebruiksvriendelijke GUI
+- 🖥️ **Moderne grafische interface** gebouwd met Qt/PySide6
+- 🌙 **Donkere en lichte modus** met automatische detectie
+- 📊 **Interactieve statistieken** met grafieken en overzichten
+- 🔍 **Zoeken en filteren** van transacties
+- 📁 **Sleep-en-drop** bestandsselectie
+
+### Bankimport
+- 📥 **Importeer banktransacties** van SNS Bank en Rabobank (CSV)
+- 🏦 **Ondersteuning voor betaal- en spaarrekeningen**
+- 🔄 **Automatische duplicate-detectie** bij import
+
+### Automatische Categorisatie
+- 🤖 **Slimme automatische categorisatie** op basis van beschrijving
+- 📝 **Maak en beheer je eigen categorieën** (bijv. Boodschappen, Huur, Salaris)
+- 📋 **Regelsysteem** voor toekomstige herkenning
+- ⚡ **Vergelijkbare transacties** in bulk bijwerken
+
+### Statistieken & Rapportage
+- 📈 **Maandoverzicht** met inkomsten/uitgaven grafieken
+- 🥧 **Categoriën overzicht** met verdeling
+- 📊 **Details per categorie** met aantallen en totalen
+- 📁 **Exporteer naar Excel** voor verdere analyse
+
+### Multi-user
+- 👥 **Meerdere gebruikers** op één installatie (geen wachtwoord nodig)
+- 🏦 **Meerdere rekeningen** per gebruiker
+- 👤 **Gebruikersnaam in titelbalk** voor duidelijkheid
+
+---
+
+## 📥 Download
+
+### Windows
+Download de nieuwste release voor Windows:
+- [SaldoBoek-Windows.zip](https://github.com/tubby1981/SaldoBoek/releases/latest) - Download en unzip, dubbelklik op `start_gui.bat`
+
+### Linux
+Download de nieuwste release voor Linux:
+- [SaldoBoek-Linux.zip](https://github.com/tubby1981/SaldoBoek/releases/latest) - Download en unzip, run `start_gui.sh`
+
+### macOS
+macOS wordt momenteel niet officieel ondersteund. Voor macOS kun je SaldoBoek via Python installeren (zie hieronder).
+
+---
+
+## 🚀 Installeren via Python
+
+SaldoBoek werkt op Windows, Linux en macOS mits Python 3.8+ is geïnstalleerd.
+
+### Stap 1: Clone of download
 ```bash
 git clone https://github.com/tubby1981/SaldoBoek.git
-cd saldoboek
+cd SaldoBoek
 ```
 
-### 2. Maak een Python virtual environment aan (aanbevolen)
-
+### Stap 2: Maak een virtual environment aan (aanbevolen)
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# Linux/macOS:
+source .venv/bin/activate
+
+# Windows:
+.venv\Scripts\activate
 ```
 
-### 3. Installeer de afhankelijkheden
-
+### Stap 3: Installeer afhankelijkheden
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configuratiebestanden
+### Stap 4: Start SaldoBoek
+```bash
+# GUI modus (aanbevolen)
+python -m saldoboek.gui.app
 
-SaldoBoek gebruikt een aantal configureerbare YAML- en Python-bestanden om het categoriseren van transacties en het importeren van bankafschriften te vereenvoudigen en uitbreiden:
+# Of via main.py:
+python main.py --gui
+```
 
-#### `config/categories.yaml`
+---
 
-Bevat **standaardcategorieën** die eenmalig worden toegevoegd bij het eerste gebruik van een nieuwe gebruiker. Daarna kunnen categorieën beheerd worden via het programma zelf.
+## 🛠️ Configuratie
 
-- **Structuur**: per categorie:
-  - `naam`: de naam van de categorie
-  - `type`: `"inkomsten"` of `"uitgaven"`
-  - `beschrijving`: optioneel
+Bij de eerste start wordt automatisch een database aangemaakt in `saldoboek/data/database.db`.
 
-**Voorbeeld:**
+### Categorieën aanpassen (optioneel)
+
+Bewerk `saldoboek/config/categories.yaml` om standaardcategorieën toe te voegen:
+
 ```yaml
 uitgaven:
-  - naam: "Zorgverzekering"
-    beschrijving: "Premies en eigen bijdragen zorgverzekering"
+  - naam: "Boodschappen"
+    beschrijving: "Supermarkt en winkels"
+  - naam: "Huur"
+    beschrijving: "Woonkosten"
 
 inkomsten:
   - naam: "Salaris"
     beschrijving: "Maandelijkse loonbetaling"
+  - naam: "Bijstand"
+    beschrijving: "Uitkering"
 ```
 
-🔁 Je kunt dit bestand uitbreiden vóór het eerste gebruik. Daarna worden wijzigingen in de database bijgehouden.
+### Categorisatieregels aanpassen (optioneel)
 
-#### `config/categorization_rules.yaml`
+Bewerk `saldoboek/config/categorization_rules.yaml` om automatische categorisatie in te stellen:
 
-Bevat **zoekregels** voor automatische categorisatie. Als een omschrijving of tegenrekening een van de opgegeven zoekwoorden bevat (niet hoofdlettergevoelig), dan wordt de transactie automatisch toegewezen aan de bijbehorende categorie. Dit wordt eenmalig toegevoegd bij het eerste gebruik van een nieuwe gebruiker. Daarna kunnen categorieën beheerd worden via het programma zelf.
-
-**Voorbeeld**
 ```yaml
-zorgverzekering: "Zorgverzekering"
 "albert heijn": "Boodschappen"
 jumbo: "Boodschappen"
+"zorgverzekering": "Zorgverzekering"
+salaris: "Salaris"
 ```
 
-✏️  Je kunt dit bestand uitbreiden vóór het eerste gebruik. Daarna worden wijzigingen in de database bijgehouden.
+---
 
-### `config/bank_parsers.py`
+## 🔄 Updaten naar een nieuwe versie
 
-Bevat een mapping van banknamen naar parserfuncties voor CSV-bestanden. Hiermee wordt per bank bepaald welke parser moet worden gebruikt.
+### Via download (Windows/Linux)
+1. Maak een backup van je database: `saldoboek/data/database.db`
+2. Download de nieuwe versie
+3. Vervang de oude bestanden (bewaar je database!)
+4. Start de applicatie opnieuw
 
-**Voorbeeld**
-```python
-BANK_PARSERS = {
-    'RABO': 'parse_rabo_csv',
-    'SNS': 'parse_sns_csv',
-    # 'ING': 'parse_ing_csv'
-}
-```
-
-🔄 Je kunt hier eenvoudig extra banken toevoegen door een nieuwe CSV-parserfunctie te schrijven en toe te voegen aan deze mapping. De CSV-parserfuncties staan in `importer.py`
-
-
-### 5. Start SaldoBoek
-
+### Via Git
 ```bash
-python main.py
+git pull origin main
+pip install -r requirements.txt --upgrade
 ```
 
-## 🧱 Gebruikte database
-SaldoBoek gebruikt **SQLite** als lokale opslag. Dit is een lichtgewicht database zonder extra installatie. De data wordt opgeslagen in:
+Je database blijft behouden bij updates - SaldoBoek voert automatisch migraties uit indien nodig.
 
-```bash
-saldoboek/data/database.db
+---
+
+## 🏦 Ondersteunde Banken
+
+- **SNS Bank** - Transactiehistorie CSV
+- **Rabobank** - Transactiehistorie CSV
+
+(Hulp bij het toevoegen van andere banken is welkom!)
+
+---
+
+## 🔍 Keywords
+
+SaldoBoek wordt gevonden onder: persoonlijke financiën, budgetbeheer, financieel beheer, banktransacties importeren, CSV bankafschrift, Nederlandse budget app, gratis boekhoudprogramma, thuisadministratie, bewindvoering hulpmiddel, huishoudboekje digitaal, inkomsten/uitgaven tracker, financiële rapportage Excel
+
+---
+
+## 🏗️ Architectuur
+
+SaldoBoek is opgebouwd in lagen:
+
 ```
-
-Back-ups maken of synchroniseren is eenvoudig door dit bestand te kopiëren.
-
-## 📁 Structuur
-
-```bash
-main.py                      # Startpunt van de CLI
-requirements.txt             # Vereiste Python-pakketten
 saldoboek/
-├── cli.py                   # CLI-menu's en navigatie
-├── categorization.py        # Regels en handmatige categorisatie
-├── importer.py              # Inlezen en parsen van bank-CSV's
-├── database.py              # SQLite-databasebeheer
-├── config/
-│   ├── bank_parsers.py      # Parser logica per bank
-│   ├── categories.yaml      # Categorie-definities
-│   └── categorization_rules.yaml # Automatische regels
-├── data/database.db         # Transactie-opslag (SQLite)
-├── reports/                 # Excel sheet generatie
-│   ├── sheet_overview.py    # Jaaroverzicht
-│   ├── sheet_income.py      # Inkomsten per categorie
-│   ├── sheet_expenses.py    # Uitgaven per categorie
-│   ├── sheet_monthly.py     # Maandoverzicht
-│   ├── sheet_monthly_category.py # Categorie per maand
-│   ├── sheet_balances.py    # Rekeningstanden
-│   ├── sheet_transactions.py# Alle transacties
-│   └── summary.py           # Samenvatting voor console
+├── core/              # Business logic (database, categorisatie, parsers)
+├── services/          # Service layer
+├── gui/               # PySide6 GUI applicatie
+│   ├── views/         # UI schermen
+│   ├── viewmodels/    # MVVM ViewModels
+│   └── widgets/       # Herbruikbare widgets
+└── config/            # YAML configuratiebestanden
 ```
-## 🏦 Ondersteunde banken
 
-* SNS Bank
-* Rabobank
-* (Andere banken mogelijk door het uitbreiden van bank_parsers.py)
-
-### 📊 Excel rapportage
-Bij het genereren van een jaaroverzicht wordt een .xlsx bestand aangemaakt met meerdere tabs, waaronder:
-
-* Jaaroverzicht met inkomsten/uitgavenbalans
-* Maandoverzicht
-* Categorie-overzichten per maand
-* Alle transacties
-* Saldo-overzichten per rekening
-
-Deze bestanden zijn compatibel met Excel, LibreOffice en Google Sheets.
+---
 
 ## 📄 Licentie
 
-MIT License — Vrij te gebruiken, aan te passen en te verspreiden.
+**MIT License** - Vrij te gebruiken, aan te passen en te verspreiden.
 
+Copyright (c) 2024 SaldoBoek Contributors
+
+---
+
+## 🤝 Bijdragen
+
+Bijdragen zijn welkom! Meld bugs via GitHub Issues of stuur een pull request.
+
+---
+
+**SaldoBoek - Gratis financieel beheer voor iedereen** 💰

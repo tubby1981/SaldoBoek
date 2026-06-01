@@ -22,6 +22,7 @@ class DatabaseManager:
         # Ensure the data directory exists
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
+        self._ensure_indexes()
         print(f"[DEBUG] Gebruikte database: {self.db_path}")
 
     def _connect(self):
@@ -75,7 +76,7 @@ class DatabaseManager:
             return []
 
     def _initialize(self):
-        """Initialiseer de database met benodigde tabellen"""
+        """Initialiseer de database met benodigde tabellen en voer migraties uit"""
         with sqlite3.connect(self.db_path, timeout=10) as conn:
             cursor = conn.cursor()
 
@@ -106,6 +107,7 @@ class DatabaseManager:
                     type TEXT,
                     beschrijving TEXT,
                     gebruiker_id INTEGER NOT NULL,
+                    is_standaard BOOLEAN DEFAULT 0,
                     UNIQUE(naam, gebruiker_id)
                 )
             """)
@@ -118,9 +120,10 @@ class DatabaseManager:
                     zoekterm TEXT,
                     categorie TEXT,
                     actief BOOLEAN DEFAULT 1,
+                    is_standaard BOOLEAN DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(zoekterm, gebruiker_id)
-                );
+                )
             """)
 
             # Gebruikers tabel
@@ -131,15 +134,64 @@ class DatabaseManager:
                 )
             """)
 
-            # Laad categorisatie regels uit configuratie
+            # Migratie: voeg ontbrekende kolommen toe aan bestaande tabellen
+            self._migrate_if_needed(cursor)
+
+            # Laad categorisatie regels uit configuratie (als standaard)
             standaard_regels = self._load_rules_config()
             for regel in standaard_regels:
                 cursor.execute(
-                    "INSERT OR IGNORE INTO categorisatie_regels (zoekterm, categorie) VALUES (?, ?)",
+                    """INSERT OR IGNORE INTO categorisatie_regels (zoekterm, categorie, is_standaard, gebruiker_id)
+                       VALUES (?, ?, 1, NULL)""",
                     regel,
                 )
 
             conn.commit()
+
+    def _migrate_if_needed(self, cursor):
+        """Voer database migraties uit voor nieuwe kolommen"""
+        # Check en voeg rekening kolom toe aan transacties als die ontbreekt
+        try:
+            cursor.execute("SELECT rekening FROM transacties LIMIT 1")
+        except sqlite3.OperationalError:
+            # Kolom ontbreekt, voeg toe
+            cursor.execute("ALTER TABLE transacties ADD COLUMN rekening TEXT")
+
+        # Check of is_standaard kolom bestaat in categorieen
+        try:
+            cursor.execute("SELECT is_standaard FROM categorieen LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute(
+                "ALTER TABLE categorieen ADD COLUMN is_standaard BOOLEAN DEFAULT 0"
+            )
+
+        # Check of is_standaard kolom bestaat in categorisatie_regels
+        try:
+            cursor.execute("SELECT is_standaard FROM categorisatie_regels LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute(
+                "ALTER TABLE categorisatie_regels ADD COLUMN is_standaard BOOLEAN DEFAULT 0"
+            )
+
+    def _ensure_indexes(self):
+        """Zorg dat alle benodigde indexen bestaan voor performance"""
+        with sqlite3.connect(self.db_path, timeout=10) as conn:
+            cursor = conn.cursor()
+
+            # Indexen voor transacties tabel
+            index_commands = [
+                "CREATE INDEX IF NOT EXISTS idx_transacties_gebruiker_id ON transacties(gebruiker_id)",
+                "CREATE INDEX IF NOT EXISTS idx_transacties_datum ON transacties(datum)",
+                "CREATE INDEX IF NOT EXISTS idx_transacties_categorie ON transacties(categorie)",
+                "CREATE INDEX IF NOT EXISTS idx_transacties_rekening ON transacties(rekening)",
+                "CREATE INDEX IF NOT EXISTS idx_transacties_gebruiker_datum ON transacties(gebruiker_id, datum)",
+            ]
+
+            for cmd in index_commands:
+                cursor.execute(cmd)
+
+            conn.commit()
+            print("[DEBUG] Database indexen gecontroleerd/aangemaakt")
 
     def reload_config(self):
         """Herlaad configuratie en update database"""
@@ -156,11 +208,11 @@ class DatabaseManager:
                         (*cat, gebruiker_id),
                     )
 
-            # Laad en update regels
+            # Laad en update regels (globale regels zonder gebruiker_id)
             standaard_regels = self._load_rules_config()
             for regel in standaard_regels:
                 cursor.execute(
-                    "INSERT OR IGNORE INTO categorisatie_regels (zoekterm, categorie) VALUES (?, ?)",
+                    "INSERT OR IGNORE INTO categorisatie_regels (zoekterm, categorie, gebruiker_id) VALUES (?, ?, NULL)",
                     regel,
                 )
 
@@ -324,11 +376,11 @@ class DatabaseManager:
                 return
             gebruiker_id = row[0]
 
-            # Voeg standaardcategorieën toe
+            # Voeg standaardcategorieën toe (als standaard)
             standaard_categorieen = self._load_categories_config()
             for cat in standaard_categorieen:
                 cursor.execute(
-                    "INSERT OR IGNORE INTO categorieen (naam, type, beschrijving, gebruiker_id) VALUES (?, ?, ?, ?)",
+                    "INSERT OR IGNORE INTO categorieen (naam, type, beschrijving, gebruiker_id, is_standaard) VALUES (?, ?, ?, ?, 1)",
                     (*cat, gebruiker_id),
                 )
 
@@ -359,3 +411,171 @@ class DatabaseManager:
             cursor.execute("SELECT id FROM gebruikers WHERE naam = ?", (naam,))
             gebruiker_id = cursor.fetchone()
             return gebruiker_id[0] if gebruiker_id else None
+
+    # === CATEGORIEËN BEHEREN ===
+
+    def update_category(
+        self, oude_naam, nieuwe_naam, nieuw_type, nieuwe_beschrijving, gebruiker_id
+    ):
+        """Update een categorie (alleen eigen categorieën)."""
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE categorieen
+                SET naam = ?, type = ?, beschrijving = ?
+                WHERE naam = ? AND gebruiker_id = ?
+                """,
+                (nieuwe_naam, nieuw_type, nieuwe_beschrijving, oude_naam, gebruiker_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def delete_category(self, naam, gebruiker_id):
+        """Verwijder een categorie (alleen eigen categorieën)."""
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            # Verplaats transacties naar Ongecategoriseerd
+            cursor.execute(
+                """
+                UPDATE transacties
+                SET categorie = 'Ongecategoriseerd'
+                WHERE categorie = ? AND gebruiker_id = ?
+                """,
+                (naam, gebruiker_id),
+            )
+            transacties_aangepast = cursor.rowcount
+            # Verwijder de categorie
+            cursor.execute(
+                "DELETE FROM categorieen WHERE naam = ? AND gebruiker_id = ?",
+                (naam, gebruiker_id),
+            )
+            conn.commit()
+            return transacties_aangepast, cursor.rowcount > 0
+
+    def get_user_categories(self, gebruiker_id):
+        """Haal alleen de categorieën van een specifieke gebruiker (niet global)."""
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT naam, type, beschrijving
+                FROM categorieen
+                WHERE gebruiker_id = ?
+                ORDER BY type, naam
+                """,
+                (gebruiker_id,),
+            )
+            return cursor.fetchall()
+
+    def is_category_global(self, naam):
+        """Check of een categorie globaal is (geen gebruiker_id)."""
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM categorieen WHERE naam = ? AND gebruiker_id IS NULL",
+                (naam,),
+            )
+            return cursor.fetchone()[0] > 0
+
+    # === REGELS BEHEREN ===
+
+    def update_rule(
+        self, oude_zoekterm, nieuwe_zoekterm, nieuwe_categorie, gebruiker_id
+    ):
+        """Update een categorisatie regel (alleen eigen regels)."""
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE categorisatie_regels
+                SET zoekterm = ?, categorie = ?
+                WHERE zoekterm = ? AND gebruiker_id = ?
+                """,
+                (nieuwe_zoekterm, nieuwe_categorie, oude_zoekterm, gebruiker_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def delete_rule(self, zoekterm, gebruiker_id):
+        """Verwijder een categorisatie regel (alleen eigen regels)."""
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM categorisatie_regels WHERE zoekterm = ? AND gebruiker_id = ?",
+                (zoekterm, gebruiker_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_user_rules(self, gebruiker_id):
+        """Haal alleen de regels van een specifieke gebruiker (niet global)."""
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT zoekterm, categorie
+                FROM categorisatie_regels
+                WHERE gebruiker_id = ? AND actief = 1
+                ORDER BY categorie, zoekterm
+                """,
+                (gebruiker_id,),
+            )
+            return cursor.fetchall()
+
+    def is_rule_global(self, zoekterm):
+        """Check of een regel globaal is (geen gebruiker_id)."""
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM categorisatie_regels WHERE zoekterm = ? AND gebruiker_id IS NULL",
+                (zoekterm,),
+            )
+            return cursor.fetchone()[0] > 0
+
+    def is_category_standaard(self, naam):
+        """Check of een categorie standaard is (uit YAML config)."""
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM categorieen WHERE naam = ? AND is_standaard = 1",
+                (naam,),
+            )
+            return cursor.fetchone()[0] > 0
+
+    def is_rule_standaard(self, zoekterm):
+        """Check of een regel standaard is (uit YAML config)."""
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM categorisatie_regels WHERE zoekterm = ? AND is_standaard = 1",
+                (zoekterm,),
+            )
+            return cursor.fetchone()[0] > 0
+
+    def update_transaction_category_by_id(
+        self, transaction_id, categorie, gebruiker_id
+    ):
+        """Update categorie van een transactie op basis van ID."""
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE transacties SET categorie = ? WHERE id = ? AND gebruiker_id = ?",
+                (categorie, transaction_id, gebruiker_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_transaction_by_id(self, transaction_id, gebruiker_id):
+        """Haal een enkele transactie op basis van ID."""
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM transacties WHERE id = ? AND gebruiker_id = ?",
+                (transaction_id, gebruiker_id),
+            )
+            row = cursor.fetchone()
+            if row:
+                columns = [desc[0] for desc in cursor.description]
+                return dict(zip(columns, row))
+            return None

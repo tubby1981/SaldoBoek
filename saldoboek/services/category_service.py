@@ -64,19 +64,31 @@ class CategoryService:
         """
         Haal alle categorisatie regels op.
 
+        Gebruikerspecifieke regels overschrijven globale regels met dezelfde zoekterm.
+        Alleen unieke zoektermen worden getoond (geen duplicaten).
+
         Args:
             gebruiker_id: Gebruiker ID
 
         Returns:
             List van regels tuples (zoekterm, categorie)
         """
+        # Combineer gebruiker-regels met globale regels die niet overschreven zijn
         query = """
             SELECT zoekterm, categorie
             FROM categorisatie_regels
-            WHERE actief = 1 AND (gebruiker_id = ? OR gebruiker_id IS NULL)
+            WHERE actief = 1 AND gebruiker_id = ?
+            UNION ALL
+            SELECT zoekterm, categorie
+            FROM categorisatie_regels
+            WHERE actief = 1 AND gebruiker_id IS NULL
+            AND zoekterm NOT IN (
+                SELECT zoekterm FROM categorisatie_regels
+                WHERE actief = 1 AND gebruiker_id = ?
+            )
             ORDER BY categorie, zoekterm
         """
-        return self._db.execute(query, (gebruiker_id,), fetch=True)
+        return self._db.execute(query, (gebruiker_id, gebruiker_id), fetch=True)
 
     def add_categorization_rule(self, zoekterm, categorie, gebruiker_id):
         """
@@ -88,6 +100,95 @@ class CategoryService:
             gebruiker_id: Gebruiker ID
         """
         self._categorizer.add_categorization_rule(zoekterm, categorie)
+
+    def update_category(
+        self, oude_naam, nieuwe_naam, nieuw_type, beschrijving, gebruiker_id
+    ):
+        """
+        Update een categorie.
+
+        Args:
+            oude_naam: Huidige naam van de categorie
+            nieuwe_naam: Nieuwe naam
+            nieuw_type: 'inkomsten' of 'uitgaven'
+            beschrijving: Beschrijving
+            gebruiker_id: Gebruiker ID
+
+        Returns:
+            True als gelukt, False bij fout
+        """
+        if self._db.is_category_global(oude_naam):
+            logger.warning("Globale categorie kan niet bewerkt worden: %s", oude_naam)
+            return False
+        return self._db.update_category(
+            oude_naam, nieuwe_naam, nieuw_type, beschrijving, gebruiker_id
+        )
+
+    def delete_category(self, naam, gebruiker_id):
+        """
+        Verwijder een categorie. Transacties worden naar Ongecategoriseerd verplaatst.
+
+        Args:
+            naam: Naam van de categorie
+            gebruiker_id: Gebruiker ID
+
+        Returns:
+            Tuple (transacties_herplaatst, success)
+        """
+        if self._db.is_category_global(naam):
+            logger.warning("Globale categorie kan niet verwijderd worden: %s", naam)
+            return 0, False
+        return self._db.delete_category(naam, gebruiker_id)
+
+    def is_category_editable(self, naam):
+        """Check of een categorie bewerkbaar is door de gebruiker."""
+        return not self._db.is_category_global(
+            naam
+        ) and not self._db.is_category_standaard(naam)
+
+    def update_rule(
+        self, oude_zoekterm, nieuwe_zoekterm, nieuwe_categorie, gebruiker_id
+    ):
+        """
+        Update een categorisatie regel.
+
+        Args:
+            oude_zoekterm: Huidige zoekterm
+            nieuwe_zoekterm: Nieuwe zoekterm
+            nieuwe_categorie: Nieuwe categorie
+            gebruiker_id: Gebruiker ID
+
+        Returns:
+            True als gelukt, False bij fout
+        """
+        if self._db.is_rule_global(oude_zoekterm):
+            logger.warning("Globale regel kan niet bewerkt worden: %s", oude_zoekterm)
+            return False
+        return self._db.update_rule(
+            oude_zoekterm, nieuwe_zoekterm, nieuwe_categorie, gebruiker_id
+        )
+
+    def delete_rule(self, zoekterm, gebruiker_id):
+        """
+        Verwijder een categorisatie regel.
+
+        Args:
+            zoekterm: Zoekterm van de regel
+            gebruiker_id: Gebruiker ID
+
+        Returns:
+            True als gelukt, False bij fout
+        """
+        if self._db.is_rule_global(zoekterm):
+            logger.warning("Globale regel kan niet verwijderd worden: %s", zoekterm)
+            return False
+        return self._db.delete_rule(zoekterm, gebruiker_id)
+
+    def is_rule_editable(self, zoekterm):
+        """Check of een regel bewerkbaar is door de gebruiker."""
+        return not self._db.is_rule_global(zoekterm) and not self._db.is_rule_standaard(
+            zoekterm
+        )
 
     def recategorize_transactions(self, keuze, categorie, gebruiker_id):
         """

@@ -100,8 +100,23 @@ class RaboParser:
         if missing_columns:
             raise Exception(f"Ontbrekende kolommen: {missing_columns}")
 
-        # Datum conversie
-        df["datum"] = pd.to_datetime(df["Datum"], format="%Y-%m-%d", errors="coerce")
+        # Datum conversie - probeer meerdere formaten
+        # Rabobank kan verschillende datumformaten gebruiken
+        date_formats = ["%Y-%m-%d", "%d-%m-%Y", "%d-%m-%y", "%Y/%m/%d", "%d/%m/%Y"]
+        datum_geconverteerd = False
+        for fmt in date_formats:
+            try:
+                test_df = pd.to_datetime(df["Datum"], format=fmt, errors="raise")
+                if not test_df.isna().all():
+                    df["datum"] = test_df
+                    datum_geconverteerd = True
+                    break
+            except (ValueError, TypeError):
+                continue
+
+        if not datum_geconverteerd:
+            # Fallback: laat pandas zelf het formaat detecteren
+            df["datum"] = pd.to_datetime(df["Datum"], errors="coerce")
 
         # Bedrag conversie (van Nederlands formaat naar float)
         df["bedrag"] = self._convert_dutch_currency(df["Bedrag"])

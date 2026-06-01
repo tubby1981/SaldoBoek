@@ -10,17 +10,32 @@ class Categorizer:
         self.rules = self._load_rules()
 
     def _load_rules(self):
-        """Laad categorisatie regels uit database"""
+        """Laad categorisatie regels uit database
+
+        Gebruikerspecifieke regels overschrijven globale regels met dezelfde zoekterm.
+        """
         logger.info(
             "Laden van categorisatie regels voor gebruiker %s", self.gebruiker_id
         )
-        regels = self.db.execute(
-            "SELECT zoekterm, categorie FROM categorisatie_regels WHERE actief = 1 AND (gebruiker_id = ? OR gebruiker_id IS NULL)",
+
+        # Eerst globale regels laden (gebruiker_id IS NULL)
+        globale_regels = self.db.execute(
+            "SELECT zoekterm, categorie FROM categorisatie_regels WHERE actief = 1 AND gebruiker_id IS NULL",
+            fetch=True,
+        )
+        rules = {term.lower(): cat for term, cat in globale_regels}
+
+        # Daarna gebruikerspecifieke regels laden (overschrijven globale)
+        gebruiker_regels = self.db.execute(
+            "SELECT zoekterm, categorie FROM categorisatie_regels WHERE actief = 1 AND gebruiker_id = ?",
             (self.gebruiker_id,),
             fetch=True,
         )
-        logger.info("%d categorisatie regels geladen", len(regels))
-        return {term.lower(): cat for term, cat in regels}
+        for term, cat in gebruiker_regels:
+            rules[term.lower()] = cat
+
+        logger.info("%d categorisatie regels geladen", len(rules))
+        return rules
 
     def categorize(self, naam, omschrijving):
         """Bepaal categorie op basis van naam en omschrijving"""
@@ -155,12 +170,23 @@ class Categorizer:
             print(f"  • {naam}: {beschrijving}")
 
     def _show_categorization_rules(self, gebruiker_id):
-        """Toon categorisatie regels"""
-        regels = self.db.execute(
-            "SELECT zoekterm, categorie FROM categorisatie_regels WHERE actief = 1 AND (gebruiker_id = ? OR gebruiker_id IS NULL) ORDER BY categorie, zoekterm",
-            (self.gebruiker_id,),
-            fetch=True,
-        )
+        """Toon categorisatie regels (gebruiker-specifiek overschrijft globaal)"""
+        # Gebruik dezelfde prioriteitslogica als _load_rules()
+        query = """
+            SELECT zoekterm, categorie
+            FROM categorisatie_regels
+            WHERE actief = 1 AND gebruiker_id = ?
+            UNION ALL
+            SELECT zoekterm, categorie
+            FROM categorisatie_regels
+            WHERE actief = 1 AND gebruiker_id IS NULL
+            AND zoekterm NOT IN (
+                SELECT zoekterm FROM categorisatie_regels
+                WHERE actief = 1 AND gebruiker_id = ?
+            )
+            ORDER BY categorie, zoekterm
+        """
+        regels = self.db.execute(query, (gebruiker_id, gebruiker_id), fetch=True)
 
         print(f"\n=== CATEGORISATIE REGELS ({len(regels)}) ===")
         current_cat = None

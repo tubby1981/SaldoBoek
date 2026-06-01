@@ -1,0 +1,147 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+jobs:
+  build-linux-binary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller pandas pyyaml openpyxl PySide6
+
+      - name: Build Linux binary
+        run: |
+          pip install pyinstaller
+          pyinstaller --onedir --name SaldoBoek-Linux \
+            --add-data "saldoboek/config:config" \
+            --hidden-import=pandas \
+            --hidden-import=pyyaml \
+            --hidden-import=openpyxl \
+            --hidden-import=PySide6.QtCore \
+            --hidden-import=PySide6.QtGui \
+            --hidden-import=PySide6.QtWidgets \
+            --hidden-import=PySide6.QtCharts \
+            --console=False \
+            --clean \
+            saldoboek/gui/app.py
+
+      - name: Create distribution folder
+        run: |
+          mkdir -p dist/SaldoBoek-Linux
+          cp -r dist/SaldoBoek-Linux/* dist/SaldoBoek-Linux/
+          cp README.md dist/SaldoBoek-Linux/
+          cp LICENSE dist/SaldoBoek-Linux/
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SaldoBoek-Linux-Binary
+          path: dist/SaldoBoek-Linux/
+
+  build-windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        shell: powershell
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller pandas pyyaml openpyxl PySide6
+
+      - name: Build Windows exe
+        shell: powershell
+        run: |
+          pyinstaller --onedir --name SaldoBoek-Windows `
+            --add-data "saldoboek/config;config" `
+            --hidden-import=pandas `
+            --hidden-import=pyyaml `
+            --hidden-import=openpyxl `
+            --hidden-import=PySide6.QtCore `
+            --hidden-import=PySide6.QtGui `
+            --hidden-import=PySide6.QtWidgets `
+            --hidden-import=PySide6.QtCharts `
+            --console=False `
+            --clean `
+            saldoboek/gui/app.py
+
+      - name: Create distribution folder
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/SaldoBoek-Windows
+          Copy-Item -Recurse dist/SaldoBoek-Windows/* dist/SaldoBoek-Windows/
+          Copy-Item README.md dist/SaldoBoek-Windows/
+          Copy-Item LICENSE dist/SaldoBoek-Windows/
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SaldoBoek-Windows-Exe
+          path: dist/SaldoBoek-Windows/
+
+  release:
+    needs: [build-linux-binary, build-windows-exe]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SaldoBoek-Linux-Binary
+          path: dist/SaldoBoek-Linux
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SaldoBoek-Windows-Exe
+          path: dist/SaldoBoek-Windows
+
+      - name: Create zip archives
+        run: |
+          cd dist/SaldoBoek-Linux
+          zip -r ../SaldoBoek-Linux.zip .
+          cd ../SaldoBoek-Windows
+          powershell -Command "Compress-Archive -Path * -DestinationPath ../SaldoBoek-Windows.zip"
+
+      - name: Create macOS placeholder info
+        run: |
+          mkdir -p dist/SaldoBoek-macOS
+          echo "# SaldoBoek macOS" > dist/SaldoBoek-macOS/README.txt
+          echo "macOS support coming soon. For now, install via Python or use the Linux version." >> dist/SaldoBoek-macOS/README.txt
+          echo "Install: pip install PySide6 pandas pyyaml openpyxl && python -m saldoboek.gui.app" >> dist/SaldoBoek-macOS/README.txt
+          cd dist/SaldoBoek-macOS
+          zip -r ../SaldoBoek-macOS.zip .
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/SaldoBoek-Linux.zip
+            dist/SaldoBoek-Windows.zip
+            dist/SaldoBoek-macOS.zip
+          generate_release_notes: true
+          name: ${{ github.ref_name }}
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

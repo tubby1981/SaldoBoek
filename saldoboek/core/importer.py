@@ -20,23 +20,37 @@ class TransactionImporter:
         self.sns_parser = SNSParser()
         self.rabo_parser = RaboParser()
 
-    def detect_bank_and_parse(self, filepath):
+    def detect_bank_and_parse(self, filepath, account_type=None):
+        """Detecteer bank type en parse het bestand.
+
+        Args:
+            filepath: Pad naar het CSV bestand
+            account_type: Optioneel 'betaalrekening' of 'spaarrekening'
+        """
         filename = os.path.basename(filepath).upper()
 
         if "SNS" in filename:
-            return self.sns_parser.parse_csv(filepath)
+            return self.sns_parser.parse_csv(filepath, account_type)
         elif "RABO" in filename or "RABOBANK" in filename:
-            return self.rabo_parser.parse_csv(filepath)
+            return self.rabo_parser.parse_csv(filepath, account_type)
         else:
             # Fallback naar oude methode
             for bank_code, parser_method in BANK_PARSERS.items():
                 if bank_code in filename:
-                    return getattr(self, parser_method)(filepath)
+                    return getattr(self, parser_method)(filepath, account_type)
 
         raise ValueError(f"Onbekend bankformaat in bestandsnaam: {filename}")
 
-    def import_transactions_with_categorization(self, file_paths, gebruiker_id):
-        """Importeer transacties met interactieve categorisatie"""
+    def import_transactions_with_categorization(
+        self, file_paths, gebruiker_id, account_type="betaalrekening"
+    ):
+        """Importeer transacties met interactieve categorisatie
+
+        Args:
+            file_paths: Lijst van bestandspaden
+            gebruiker_id: Gebruiker ID
+            account_type: 'betaalrekening' of 'spaarrekening'
+        """
         ongecategoriseerd = []
         total_imported = 0
 
@@ -48,7 +62,7 @@ class TransactionImporter:
             print(f"\nVerwerken: {file_path}")
 
             try:
-                df = self.detect_bank_and_parse(file_path)
+                df = self.detect_bank_and_parse(file_path, account_type)
             except ValueError as e:
                 print(f"  ! {e}")
                 continue

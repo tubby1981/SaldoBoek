@@ -1,0 +1,84 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "saldoboek"
+version = "1.0.0"
+description = "Gratis Nederlandstalig financieel beheerprogramma voor persoonlijke financiën, budgetbeheer en banktransactie-rapportage"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "SaldoBoek Contributors"}
+]
+keywords = [
+    "financieel",
+    "financien",
+    "budget",
+    "budgetbeheer",
+    "bank",
+    "transacties",
+    "csv",
+    "import",
+    "categoriseren",
+    "rapportage",
+    "python",
+    "gui",
+    "qt",
+    "pyside6",
+    "nederlands",
+    "dutch",
+    "saldo",
+    "boekhouding",
+    "persoonlijk",
+    "bewindvoering"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Home Personal Finance",
+    "Natural Language :: Dutch",
+    "Environment :: X11 Applications :: Qt",
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: MacOS X",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "pandas>=1.3.0",
+    "pyyaml>=5.4.0",
+    "openpyxl>=3.0.0",
+    "pySide6>=6.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=22.0.0",
+    "flake8>=4.0.0",
+]
+
+[project.scripts]
+saldoboek = "saldoboek.cli:main"
+saldoboek-gui = "saldoboek.gui.app:run_app"
+
+[project.urls]
+Homepage = "https://github.com/tubby1981/SaldoBoek"
+Repository = "https://github.com/tubby1981/SaldoBoek"
+Issues = "https://github.com/tubby1981/SaldoBoek/issues"
+Documentation = "https://github.com/tubby1981/SaldoBoek#readme"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["saldoboek*"]
+
+[tool.setuptools.package-data]
+saldoboek = ["config/*.yaml", "config/*.py"]
