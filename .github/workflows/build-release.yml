@@ -123,7 +123,7 @@ jobs:
           cd dist/SaldoBoek-Linux
           zip -r ../SaldoBoek-Linux.zip .
           cd ../SaldoBoek-Windows
-          powershell -Command "Compress-Archive -Path * -DestinationPath ../SaldoBoek-Windows.zip"
+          zip -r ../SaldoBoek-Windows.zip .
 
       - name: Create macOS placeholder info
         run: |
