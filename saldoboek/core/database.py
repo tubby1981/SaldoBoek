@@ -173,6 +173,14 @@ class DatabaseManager:
                 "ALTER TABLE categorisatie_regels ADD COLUMN is_standaard BOOLEAN DEFAULT 0"
             )
 
+        # Check of linked_transaction_id kolom bestaat in transacties (voor gekoppelde transacties)
+        try:
+            cursor.execute("SELECT linked_transaction_id FROM transacties LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute(
+                "ALTER TABLE transacties ADD COLUMN linked_transaction_id INTEGER REFERENCES transacties(id)"
+            )
+
     def _ensure_indexes(self):
         """Zorg dat alle benodigde indexen bestaan voor performance"""
         with sqlite3.connect(self.db_path, timeout=10) as conn:

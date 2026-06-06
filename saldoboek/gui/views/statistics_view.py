@@ -183,6 +183,31 @@ class StatisticsView(QWidget):
 
         layout.addWidget(cat_details_group)
 
+        # Rekening details table
+        rek_details_group = QGroupBox("Rekening Overzicht")
+        rek_details_layout = QVBoxLayout(rek_details_group)
+
+        self._rekening_table = QTableWidget()
+        self._rekening_table.setObjectName("rekening_table")
+        self._rekening_table.setColumnCount(4)
+        self._rekening_table.setHorizontalHeaderLabels(
+            ["Rekening", "Beginstand", "Eindstand", "Totaal Bedrag"]
+        )
+        self._rekening_table.setMaximumHeight(150)
+        self._rekening_table.setAlternatingRowColors(True)
+        header = self._rekening_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.Interactive)
+        header.setSectionResizeMode(1, QHeaderView.Interactive)
+        header.setSectionResizeMode(2, QHeaderView.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.Interactive)
+        self._rekening_table.setColumnWidth(0, 180)  # Rekening
+        self._rekening_table.setColumnWidth(1, 110)  # Beginstand
+        self._rekening_table.setColumnWidth(2, 110)  # Eindstand
+        self._rekening_table.setColumnWidth(3, 110)  # Totaal Bedrag
+        rek_details_layout.addWidget(self._rekening_table)
+
+        layout.addWidget(rek_details_group)
+
         layout.addStretch()
 
     def _connect_signals(self):
@@ -198,6 +223,9 @@ class StatisticsView(QWidget):
         )
         self._viewmodel.available_years_updated.connect(
             self._on_available_years_updated
+        )
+        self._viewmodel.rekening_details_updated.connect(
+            self._on_rekening_details_updated
         )
         self._viewmodel.loading_started.connect(self._on_loading_started)
         self._viewmodel.loading_finished.connect(self._on_loading_finished)
@@ -310,6 +338,27 @@ class StatisticsView(QWidget):
             self._category_table.setItem(row, 2, QTableWidgetItem(f"€{totaal:,.2f}"))
 
         self._category_table.setUpdatesEnabled(True)
+
+    def _on_rekening_details_updated(self, details):
+        """Handle rekening details table update van ViewModel."""
+        self._rekening_table.setUpdatesEnabled(False)
+        self._rekening_table.setRowCount(len(details))
+
+        for row, (rekening, beginstand, eindstand, totaal_bedrag) in enumerate(details):
+            self._rekening_table.setItem(row, 0, QTableWidgetItem(rekening))
+            self._rekening_table.setItem(
+                row, 1, QTableWidgetItem(f"€{beginstand:,.2f}")
+            )
+            self._rekening_table.setItem(row, 2, QTableWidgetItem(f"€{eindstand:,.2f}"))
+            # Totaal bedrag: groen als positief, rood als negatief
+            bedrag_item = QTableWidgetItem(f"€{totaal_bedrag:,.2f}")
+            if totaal_bedrag < 0:
+                bedrag_item.setForeground(QColor("#e74c3c"))  # Rood voor negatief
+            elif totaal_bedrag > 0:
+                bedrag_item.setForeground(QColor("#2ecc71"))  # Groen voor positief
+            self._rekening_table.setItem(row, 3, bedrag_item)
+
+        self._rekening_table.setUpdatesEnabled(True)
 
     def _on_available_years_updated(self, years):
         """Handle beschikbare jaren update van ViewModel."""

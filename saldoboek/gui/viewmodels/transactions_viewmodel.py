@@ -30,6 +30,12 @@ class TransactionsViewModel(QObject):
     stats_updated = Signal(dict)  # {inkomsten, uitgaven, saldo}
     filter_options_updated = Signal(list, list)  # years, categories
     category_updated = Signal(int, str)  # transactie_id, nieuwe_categorie
+    potential_links_found = Signal(
+        list
+    )  # [(id, datum, bedrag, naam, omschrijving, already_linked), ...]
+    link_completed = Signal(int, int)  # (transaction_id, linked_id)
+    unlink_completed = Signal(int)  # transaction_id
+    linked_info_loaded = Signal(dict)  # {id, datum, bedrag, naam, info} of None
 
     def __init__(self, transaction_service, parent=None):
         """
@@ -364,6 +370,84 @@ class TransactionsViewModel(QObject):
         except Exception as e:
             logger.error("Fout bij toevoegen regel: %s", e)
             return False
+
+    def find_potential_links(self, transaction_id, days=90):
+        """
+        Vind potentiële transacties om te linken aan de gegeven transactie.
+
+        Args:
+            transaction_id: ID van de transactie om te matchen
+            days: Aantal dagen waarin gezocht wordt (default 90)
+        """
+        if not self._service:
+            self.potential_links_found.emit([])
+            return
+
+        try:
+            matches = self._service.find_potential_links(transaction_id, days=days)
+            self.potential_links_found.emit(matches if matches else [])
+        except Exception as e:
+            logger.error("Fout bij zoeken naar potentiële links: %s", e)
+            self.potential_links_found.emit([])
+
+    def link_transactions(self, transaction_id_1, transaction_id_2):
+        """
+        Koppel twee transacties aan elkaar.
+
+        Args:
+            transaction_id_1: ID van eerste transactie
+            transaction_id_2: ID van tweede transactie
+        """
+        if not self._service:
+            return
+
+        try:
+            success = self._service.link_transactions(
+                transaction_id_1, transaction_id_2
+            )
+            if success:
+                self.link_completed.emit(transaction_id_1, transaction_id_2)
+                logger.info(
+                    "Transacties gelinkt: %d <-> %d", transaction_id_1, transaction_id_2
+                )
+        except Exception as e:
+            logger.error("Fout bij linken transacties: %s", e)
+
+    def unlink_transaction(self, transaction_id):
+        """
+        Ontkoppel een transactie van zijn gekoppelde transactie.
+
+        Args:
+            transaction_id: ID van de transactie om te ontkoppelen
+        """
+        if not self._service:
+            return
+
+        try:
+            success = self._service.unlink_transaction(transaction_id)
+            if success:
+                self.unlink_completed.emit(transaction_id)
+                logger.info("Transactie ontkoppeld: %d", transaction_id)
+        except Exception as e:
+            logger.error("Fout bij ontkoppelen transactie: %s", e)
+
+    def get_linked_transaction_info(self, transaction_id):
+        """
+        Haal info op over de gekoppelde transactie en emit via signal.
+
+        Args:
+            transaction_id: ID van de transactie
+        """
+        if not self._service:
+            self.linked_info_loaded.emit(None)
+            return
+
+        try:
+            info = self._service.get_linked_transaction_info(transaction_id)
+            self.linked_info_loaded.emit(info)
+        except Exception as e:
+            logger.error("Fout bij ophalen gekoppelde transactie info: %s", e)
+            self.linked_info_loaded.emit(None)
 
     @property
     def page_size(self) -> int:

@@ -30,6 +30,9 @@ class StatisticsViewModel(QObject):
     categories_chart_updated = Signal(list, list)  # categorieën, bedragen
     category_details_updated = Signal(list)  # lijst van (naam, aantal, totaal)
     available_years_updated = Signal(list)  # beschikbare jaren
+    rekening_details_updated = Signal(
+        list
+    )  # lijst van (rekening, beginstand, eindstand, totaal_bedrag)
     loading_started = Signal()
     loading_finished = Signal()
     error_occurred = Signal(str)
@@ -74,9 +77,8 @@ class StatisticsViewModel(QObject):
             self._stats = self._service.get_transaction_stats(self._gebruiker_id)
 
             # Haal alle transacties op voor berekeningen
-            self._all_df = self._service.get_transactions(
-                filters={}, gebruiker_id=self._gebruiker_id
-            )
+            # Gebruik get_transactions_for_stats om gekoppelde €0 paren uit te sluiten
+            self._all_df = self._service.get_transactions_for_stats(self._gebruiker_id)
 
             # Emit beschikbare jaren
             self._emit_available_years()
@@ -322,10 +324,58 @@ class StatisticsViewModel(QObject):
 
             self.category_details_updated.emit(details)
 
+            # Updaterekening details
+            self._update_rekening_details()
+
         except Exception as e:
             logger.error("Fout bij categorie overzicht: %s", e)
             self.categories_chart_updated.emit([], [])
             self.category_details_updated.emit([])
+
+    def _update_rekening_details(self) -> None:
+        """Bereken per-rekening statistieken: beginstand, eindstand, totaal."""
+        if self._df is None or self._df.empty:
+            self.rekening_details_updated.emit([])
+            return
+
+        try:
+            import pandas as pd
+
+            df = self._df.copy()
+            df["datum"] = pd.to_datetime(df["datum"])
+            df = df.sort_values("datum")
+
+            # Group by rekening
+            details = []
+            for rekening, group in df.groupby("rekening"):
+                group = group.sort_values("datum")
+
+                # Beginstand: saldo_voor van eerste transactie
+                beginstand = group.iloc[0]["saldo_voor"] if not group.empty else 0
+
+                # Eindstand: saldo_na (berekenen uit laatste transactie + bedrag)
+                laatste = group.iloc[-1]
+                eindstand = laatste["saldo_voor"] + laatste["bedrag"]
+
+                # Totaal bedrag van alle transacties
+                totaal_bedrag = group["bedrag"].sum()
+
+                details.append(
+                    (
+                        rekening,
+                        float(beginstand),
+                        float(eindstand),
+                        float(totaal_bedrag),
+                    )
+                )
+
+            # Sorteer op rekening
+            details.sort(key=lambda x: x[0])
+            self.rekening_details_updated.emit(details)
+
+        except Exception as e:
+            logger.error("Fout bij rekening details: %s", e)
+            self.rekening_details_updated.emit([])
 
     def refresh(self) -> None:
         """Vernieuw de statistieken."""

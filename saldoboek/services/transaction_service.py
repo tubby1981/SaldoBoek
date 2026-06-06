@@ -2,6 +2,8 @@
 
 import logging
 
+import pandas as pd
+
 logger = logging.getLogger(__name__)
 
 
@@ -79,9 +81,18 @@ class TransactionService:
                 params.append(filters["rekening"])
 
             if "zoek" in filters and filters["zoek"]:
-                query += " AND (omschrijving LIKE ? OR naam LIKE ?)"
-                zoek = f"%{filters['zoek']}%"
-                params.extend([zoek, zoek])
+                zoek = filters["zoek"]
+                # Zoek in alle tekstkolommen
+                search_clause = (
+                    " AND (omschrijving LIKE ? OR naam LIKE ? OR rekening LIKE ?"
+                    " OR tegenrekening LIKE ? OR categorie LIKE ?"
+                    " OR CAST(bedrag AS TEXT) LIKE ?)"
+                )
+                query += search_clause
+                zoek_like = f"%{zoek}%"
+                params.extend(
+                    [zoek_like, zoek_like, zoek_like, zoek_like, zoek_like, zoek_like]
+                )
 
         query += " ORDER BY datum DESC"
 
@@ -278,3 +289,282 @@ class TransactionService:
                 "uitgaven": row[3] or 0,
             }
         return {"totaal": 0, "ongecategoriseerd": 0, "inkomsten": 0, "uitgaven": 0}
+
+    def link_transactions(self, transaction_id_1, transaction_id_2):
+        """
+        Koppel twee transacties aan elkaar.
+
+        Args:
+            transaction_id_1: ID van eerste transactie
+            transaction_id_2: ID van tweede transactie
+
+        Returns:
+            True als successful, False anders
+        """
+        try:
+            with self._db._connect() as conn:
+                cursor = conn.cursor()
+                # Zet transaction_id_1 als de "owner" die linkt naar transaction_id_2
+                cursor.execute(
+                    "UPDATE transacties SET linked_transaction_id = ? WHERE id = ?",
+                    (transaction_id_2, transaction_id_1),
+                )
+                # Zet ook de andere kant - transaction_id_2 linkt naar transaction_id_1
+                cursor.execute(
+                    "UPDATE transacties SET linked_transaction_id = ? WHERE id = ?",
+                    (transaction_id_1, transaction_id_2),
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error("Fout bij linken transacties: %s", e)
+            return False
+
+    def unlink_transaction(self, transaction_id):
+        """
+        Ontkoppel een transactie van zijn gekoppelde transactie.
+
+        Args:
+            transaction_id: ID van de transactie
+
+        Returns:
+            True als successful, False anders
+        """
+        try:
+            with self._db._connect() as conn:
+                cursor = conn.cursor()
+                # Haal eerst de gekoppelde ID op
+                cursor.execute(
+                    "SELECT linked_transaction_id FROM transacties WHERE id = ?",
+                    (transaction_id,),
+                )
+                result = cursor.fetchone()
+                if result and result[0]:
+                    linked_id = result[0]
+                    # Verwijder beide kanten van de link
+                    cursor.execute(
+                        "UPDATE transacties SET linked_transaction_id = NULL WHERE id = ?",
+                        (transaction_id,),
+                    )
+                    cursor.execute(
+                        "UPDATE transacties SET linked_transaction_id = NULL WHERE id = ?",
+                        (linked_id,),
+                    )
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error("Fout bij ontkoppelen transactie: %s", e)
+            return False
+
+    def find_potential_links(self, transaction_id, days=90, amount_threshold=5.0):
+        """
+        Vind potentiële transacties om te linken.
+
+        Zoekt transacties die:
+        - Tegenovergesteld bedrag hebben (storno/retour)
+        - Binnen dezelfde maand vallen
+        - Van dezelfde rekening komen
+
+        Args:
+            transaction_id: ID van de transactie om te matchen
+            days: Aantal dagen waarin gezocht wordt (default 30)
+            amount_threshold: Maximaal verschil in bedrag om als match te tellen
+
+        Returns:
+            DataFrame met potentiële matches
+        """
+        try:
+            with self._db._connect() as conn:
+                cursor = conn.cursor()
+                # Haal de originele transactie op
+                cursor.execute(
+                    """SELECT id, datum, bedrag, naam, rekening, linked_transaction_id
+                       FROM transacties WHERE id = ?""",
+                    (transaction_id,),
+                )
+                orig = cursor.fetchone()
+                if not orig:
+                    return None
+
+                (
+                    orig_id,
+                    orig_datum,
+                    orig_bedrag,
+                    orig_naam,
+                    orig_rekening,
+                    already_linked,
+                ) = orig
+
+                # Als al gelinkt, suggereer alleen de bestaande link
+                if already_linked:
+                    cursor.execute(
+                        """SELECT id, datum, bedrag, naam, omschrijving, categorie
+                           FROM transacties WHERE id = ?""",
+                        (already_linked,),
+                    )
+                    linked = cursor.fetchone()
+                    if linked:
+                        return [
+                            (
+                                linked[0],
+                                linked[1],
+                                linked[2],
+                                linked[3],
+                                "Reeds gekoppeld",
+                                True,
+                            )
+                        ]
+                    return []
+
+                # Zoek tegengestelde bedragen (storno/retour)
+                opposite_bedrag = -orig_bedrag
+
+                cursor.execute(
+                    """SELECT id, datum, bedrag, naam, omschrijving, categorie
+                       FROM transacties
+                       WHERE id != ?
+                         AND linked_transaction_id IS NULL
+                         AND ABS(bedrag - ?) <= ?
+                         AND datum >= date(?, '-' || ? || ' days')
+                         AND datum <= date(?, '+' || ? || ' days')
+                         AND rekening = ?
+                       ORDER BY ABS(julianday(datum) - julianday(?))
+                       LIMIT 5""",
+                    (
+                        transaction_id,
+                        opposite_bedrag,
+                        amount_threshold,
+                        orig_datum,
+                        days,
+                        orig_datum,
+                        days,
+                        orig_rekening,
+                        orig_datum,
+                    ),
+                )
+
+                matches = []
+                for row in cursor.fetchall():
+                    matches.append((row[0], row[1], row[2], row[3], row[4], False))
+
+                return matches
+        except Exception as e:
+            logger.error("Fout bij zoeken naar potentiële links: %s", e)
+            return []
+
+    def get_linked_transaction(self, transaction_id):
+        """
+        Haal de gekoppelde transactie op van een gegeven transactie.
+
+        Args:
+            transaction_id: ID van de transactie
+
+        Returns:
+            Tuple met transactie data of None
+        """
+        try:
+            with self._db._connect() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT linked_transaction_id FROM transacties WHERE id = ?",
+                    (transaction_id,),
+                )
+                result = cursor.fetchone()
+                if result and result[0]:
+                    cursor.execute(
+                        "SELECT * FROM transacties WHERE id = ?", (result[0],)
+                    )
+                    return cursor.fetchone()
+                return None
+        except Exception as e:
+            logger.error("Fout bij ophalen gekoppelde transactie: %s", e)
+            return None
+
+    def get_linked_transaction_info(self, transaction_id):
+        """
+        Haal info op over de gekoppelde transactie.
+
+        Args:
+            transaction_id: ID van de transactie
+
+        Returns:
+            Dict met linked transactie info of None
+        """
+        linked = self.get_linked_transaction(transaction_id)
+        if linked is None:
+            return None
+
+        # linked is a tuple: (id, datum, bedrag, naam, ...)
+        # Bouw een betekenisvolle tekst
+        linked_id = linked[0]
+        datum = linked[1]
+        bedrag = linked[2]
+        naam = linked[3] if linked[3] else "-"
+
+        # Format bedrag (kan string of float zijn)
+        try:
+            bedrag_str = f"€{float(bedrag):,.2f}"
+        except (ValueError, TypeError):
+            bedrag_str = str(bedrag)
+
+        return {
+            "id": linked_id,
+            "datum": datum,
+            "bedrag": bedrag,
+            "naam": naam,
+            "info": f"ID {linked_id}: {datum} {bedrag_str} - {naam}",
+        }
+
+    def get_transactions_for_stats(self, gebruiker_id, year=None):
+        """
+        Haal transacties op voor statistieken, exclusief gekoppelde €0 paren.
+
+        Gekoppelde transacties die samen €0 zijn (storno/retour) worden
+        niet meegeteld in de statistieken.
+
+        Args:
+            gebruiker_id: Gebruiker ID
+            year: Optioneel jaar om te filteren
+
+        Returns:
+            DataFrame met gefilterde transacties
+        """
+        try:
+            with self._db._connect() as conn:
+                cursor = conn.cursor()
+
+                # Subquery: vind IDs van transacties die onderdeel zijn van
+                # een gekoppeld paar dat samen €0 is (tolerantie €0.01)
+                storno_subquery = """
+                    SELECT t1.id FROM transacties t1
+                    JOIN transacties t2 ON t1.linked_transaction_id = t2.id
+                    WHERE t1.gebruiker_id = :gebruiker_id
+                      AND t1.linked_transaction_id IS NOT NULL
+                      AND ABS(t1.bedrag + t2.bedrag) <= 0.01
+                """
+
+                # Bouw params - gebruik named parameter voor subquery
+                params = {"gebruiker_id": gebruiker_id}
+
+                if year:
+                    query = f"""
+                        SELECT * FROM transacties
+                        WHERE gebruiker_id = :gebruiker_id
+                          AND id NOT IN ({storno_subquery})
+                          AND strftime('%Y', datum) = :year
+                        ORDER BY datum DESC
+                    """
+                    params["year"] = str(year)
+                else:
+                    query = f"""
+                        SELECT * FROM transacties
+                        WHERE gebruiker_id = :gebruiker_id
+                          AND id NOT IN ({storno_subquery})
+                        ORDER BY datum DESC
+                    """
+
+                df = pd.read_sql_query(query, conn, params=params)
+                return df
+        except Exception as e:
+            logger.error("Fout bij ophalen statistiek transacties: %s", e)
+            return pd.DataFrame()

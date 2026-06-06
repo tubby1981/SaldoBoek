@@ -5,8 +5,13 @@ import logging
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QButtonGroup,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
     QFrame,
+    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -15,6 +20,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QRadioButton,
+    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -191,6 +198,7 @@ class TransactionsView(QWidget):
         self._table.setContextMenuPolicy(Qt.CustomContextMenu)
         self._table.customContextMenuRequested.connect(self._on_context_menu)
         self._table.doubleClicked.connect(self._on_double_click)
+        self._table.cellClicked.connect(self._on_cell_clicked)
         layout.addWidget(self._table)
 
         # Initial state
@@ -237,6 +245,13 @@ class TransactionsView(QWidget):
         # Filter options signal
         self._viewmodel.filter_options_updated.connect(self._on_filter_options_updated)
 
+        # Link signals
+        self._viewmodel.potential_links_found.connect(self._on_potential_links_found)
+        self._viewmodel.link_completed.connect(self._on_link_completed)
+        self._viewmodel.unlink_completed.connect(self._on_unlink_completed)
+        self._viewmodel.linked_info_loaded.connect(self._on_linked_info_loaded)
+        self._linked_info_pending = None  # Wacht op info voor click actie
+
     # ViewModel signal handlers
 
     def _on_transactions_loaded(self, page_data):
@@ -274,16 +289,31 @@ class TransactionsView(QWidget):
 
     def _on_filter_options_updated(self, years, categories):
         """Handle filter opties update van ViewModel."""
+        # Bewaar huidige selecties
+        current_year = self._year_combo.currentText()
+        current_month = self._month_combo.currentIndex()
+        current_category = self._category_combo.currentText()
+
         # Years
         self._year_combo.blockSignals(True)
         self._year_combo.clear()
         self._year_combo.addItems(["Alle"] + [str(y) for y in years])
+        # Herstel selectie als deze nog bestaat
+        if current_year and current_year != "Alle":
+            idx = self._year_combo.findText(current_year)
+            if idx >= 0:
+                self._year_combo.setCurrentIndex(idx)
         self._year_combo.blockSignals(False)
 
         # Categories
         self._category_combo.blockSignals(True)
         self._category_combo.clear()
         self._category_combo.addItems(["Alle"] + categories)
+        # Herstel selectie als deze nog bestaat
+        if current_category and current_category != "Alle":
+            idx = self._category_combo.findText(current_category)
+            if idx >= 0:
+                self._category_combo.setCurrentIndex(idx)
         self._category_combo.blockSignals(False)
 
     # User action handlers (forward to ViewModel)
@@ -352,8 +382,25 @@ class TransactionsView(QWidget):
                 display_tegen = "-"
             self._table.setItem(row, 2, QTableWidgetItem(display_tegen))
 
-            # Naam
-            self._table.setItem(row, 3, QTableWidgetItem(str(trans.get("naam", ""))))
+            # Naam (met link indicator)
+            naam = trans.get("naam", "")
+            if naam is None or (isinstance(naam, float) and str(naam) == "nan"):
+                naam = "-"
+            else:
+                naam = str(naam)
+            trans_id = trans.get("id")
+            linked_id = trans.get("linked_transaction_id")
+            # Check voor None EN NaN (pandas leest SQLite NULL als NaN)
+            has_link = linked_id is not None and str(linked_id) != "nan"
+            if has_link:
+                naam = f"🔗 {naam}"
+            naam_item = QTableWidgetItem(naam)
+            if has_link:
+                naam_item.setForeground(Qt.blue)
+                naam_item.setToolTip("Klik om gekoppelde transactie te zien")
+                # Sla transactie ID op in het item voor click handling
+                naam_item.setData(Qt.UserRole, trans_id)
+            self._table.setItem(row, 3, naam_item)
 
             # Omschrijving
             self._table.setItem(
@@ -424,6 +471,27 @@ class TransactionsView(QWidget):
         if transaction:
             self._open_edit_category_dialog(transaction)
 
+    def _on_cell_clicked(self, row, col):
+        """
+        Handle click op een cel. Als het een gekoppelde transactie betreft
+        (kolom 3 = Naam) en de gebruiker klikt op de 🔗, toon de gekoppelde transactie.
+        """
+        if col != 3:  # Alleen kolom "Naam"
+            return
+
+        item = self._table.item(row, col)
+        if not item:
+            return
+
+        # Check of dit een linked transactie is (heeft UserRole data)
+        trans_id = item.data(Qt.UserRole)
+        if trans_id is None:
+            return  # Geen linked transactie
+
+        # Vraag de gekoppelde transactie info op
+        self._linked_info_pending = trans_id
+        self._viewmodel.get_linked_transaction_info(trans_id)
+
     def _on_context_menu(self, position):
         """Toon context menu bij rechtermuisklik."""
         row = self._table.rowAt(position.y())
@@ -441,6 +509,27 @@ class TransactionsView(QWidget):
         edit_action.triggered.connect(
             lambda: self._open_edit_category_dialog(transaction)
         )
+
+        menu.addSeparator()
+
+        # Link/ unlink actie
+        linked_id = transaction.get("linked_transaction_id")
+        # Check voor None EN NaN (pandas leest SQLite NULL als NaN)
+        has_link = linked_id is not None and str(linked_id) != "nan"
+        if has_link:
+            # Toon info over gekoppelde transactie
+            info_action = menu.addAction("🔗 Gekoppelde transactie bekijken")
+            info_action.triggered.connect(
+                lambda: self._show_linked_transaction(transaction["id"])
+            )
+            # Optie om koppeling te verwijderen
+            unlink_action = menu.addAction("🔗 Koppeling verwijderen")
+            unlink_action.triggered.connect(
+                lambda: self._viewmodel.unlink_transaction(transaction["id"])
+            )
+        else:
+            link_action = menu.addAction("🔗 Transacties koppelen...")
+            link_action.triggered.connect(lambda: self._open_link_dialog(transaction))
 
         menu.exec(self._table.viewport().mapToGlobal(position))
 
@@ -551,3 +640,252 @@ class TransactionsView(QWidget):
                     )
         else:
             QMessageBox.warning(self, "Fout", "Kon de categorie niet opslaan.")
+
+    def _open_link_dialog(self, transaction):
+        """
+        Open de dialoog voor het koppelen van transacties.
+
+        Args:
+            transaction: Dict met transactie data
+        """
+        self._link_dialog = LinkTransactionsDialog(transaction, self._viewmodel, self)
+        self._link_dialog.exec()
+        self._link_dialog = None  # Cleanup after dialog closes
+
+    def _on_potential_links_found(self, matches):
+        """Handle potential links found van ViewModel."""
+        if hasattr(self, "_link_dialog") and self._link_dialog:
+            self._link_dialog.update_matches(matches)
+
+    def _on_link_completed(self, trans_id_1, trans_id_2):
+        """Handle link completed van ViewModel."""
+        logger.info("Transacties gekoppeld: %d <-> %d", trans_id_1, trans_id_2)
+        if hasattr(self, "_link_dialog") and self._link_dialog:
+            self._link_dialog.accept()
+        QMessageBox.information(self, "Gekoppeld", f"Transacties zijn nu gekoppeld.")
+        self._viewmodel.refresh()
+
+    def _on_unlink_completed(self, transaction_id):
+        """Handle unlink completed van ViewModel."""
+        logger.info("Transactie ontkoppeld: %d", transaction_id)
+        QMessageBox.information(self, "Ontkoppeld", f"De koppeling is verwijderd.")
+        self._viewmodel.refresh()
+
+    def _on_linked_info_loaded(self, info):
+        """Handle linked info geladen van ViewModel."""
+        if self._linked_info_pending is None:
+            return
+
+        trans_id = self._linked_info_pending
+        self._linked_info_pending = None
+
+        if info is None:
+            QMessageBox.information(
+                self, "Gekoppeld", "Geen gekoppelde transactie gevonden."
+            )
+            return
+
+        # Highlight de gekoppelde transactie in de tabel
+        self._scroll_to_transaction(info["id"])
+        QMessageBox.information(
+            self, "Gekoppelde transactie", f"Gekoppeld aan: {info['info']}"
+        )
+
+    def _show_linked_transaction(self, transaction_id):
+        """Toon de gekoppelde transactie info en scroll ernaar."""
+        self._linked_info_pending = transaction_id
+        self._viewmodel.get_linked_transaction_info(transaction_id)
+
+    def _scroll_to_transaction(self, transaction_id):
+        """Scroll de tabel naar de transactie met het gegeven ID en selecteer deze."""
+        # Zoek de rij met dit transaction_id
+        for row in range(self._table.rowCount()):
+            item = self._table.item(row, 0)
+            if item and item.data(Qt.UserRole) == transaction_id:
+                self._table.selectRow(row)
+                self._table.scrollToItem(item, QAbstractItemView.PositionAtCenter)
+                return
+
+        # Niet gevonden in huidige pagina - laad opnieuw met filter
+        # (zou eigenlijk de juiste pagina moeten laden)
+        logger.info("Transactie %d niet op huidige pagina", transaction_id)
+
+
+class LinkTransactionsDialog(QDialog):
+    """
+    Dialoog voor het koppelen van transacties.
+
+    Toont de geselecteerde transactie en zoekt automatisch naar
+    potentiële matches (tegenovergesteld bedrag, zelfde rekening, etc.)
+    """
+
+    def __init__(self, transaction, viewmodel, parent=None):
+        """
+        Initialiseer de LinkTransactionsDialog.
+
+        Args:
+            transaction: Dict met transactie data van de eerste transactie
+            viewmodel: TransactionsViewModel instantie
+            parent: Parent widget
+        """
+        super().__init__(parent)
+        self._transaction = transaction
+        self._viewmodel = viewmodel
+        self._selected_match_id = None
+        self._matches = []
+        self._setup_ui()
+        # Direct connect - signal comes directly to dialog, not via View
+        viewmodel.potential_links_found.connect(self.update_matches)
+        self._search_matches()
+
+    def _setup_ui(self):
+        """Bouw de UI op."""
+        self.setWindowTitle("Transacties koppelen")
+        self.setMinimumWidth(700)
+        self.setMinimumHeight(400)
+
+        layout = QVBoxLayout(self)
+
+        # Originele transactie info
+        info_group = QGroupBox("Transactie om te koppelen")
+        info_layout = QFormLayout(info_group)
+
+        def safe_str(val, default="-"):
+            """Converteer waarde naar string, vervang None/NaN door default."""
+            if val is None or (isinstance(val, float) and str(val) == "nan"):
+                return default
+            return str(val)
+
+        self._orig_datum = QLabel(safe_str(self._transaction.get("datum")))
+        self._orig_bedrag = QLabel(f"€{self._transaction.get('bedrag', 0):,.2f}")
+        self._orig_naam = QLabel(safe_str(self._transaction.get("naam")))
+        self._orig_omschrijving = QLabel(
+            safe_str(self._transaction.get("omschrijving"))
+        )
+
+        info_layout.addRow("Datum:", self._orig_datum)
+        info_layout.addRow("Bedrag:", self._orig_bedrag)
+        info_layout.addRow("Naam:", self._orig_naam)
+        info_layout.addRow("Omschrijving:", self._orig_omschrijving)
+
+        layout.addWidget(info_group)
+
+        # Zoekopties
+        options_layout = QHBoxLayout()
+        options_layout.addWidget(QLabel("Zoeken binnen (dagen):"))
+        self._days_spin = QSpinBox()
+        self._days_spin.setMinimum(1)
+        self._days_spin.setMaximum(365)
+        self._days_spin.setValue(90)
+        options_layout.addWidget(self._days_spin)
+
+        self._search_btn = QPushButton("Opnieuw zoeken")
+        self._search_btn.clicked.connect(self._search_matches)
+        options_layout.addWidget(self._search_btn)
+        options_layout.addStretch()
+
+        layout.addLayout(options_layout)
+
+        # Matches tabel
+        matches_group = QGroupBox("Gevonden potentiële matches")
+        matches_layout = QVBoxLayout(matches_group)
+
+        self._matches_table = QTableWidget()
+        self._matches_table.setObjectName("matches_table")
+        self._matches_table.setColumnCount(5)
+        self._matches_table.setHorizontalHeaderLabels(
+            ["Datum", "Bedrag", "Naam", "Omschrijving", "Status"]
+        )
+        self._matches_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._matches_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self._matches_table.setAlternatingRowColors(True)
+        header = self._matches_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.Interactive)
+        header.setSectionResizeMode(1, QHeaderView.Interactive)
+        header.setSectionResizeMode(2, QHeaderView.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.Interactive)
+        self._matches_table.setColumnWidth(0, 90)
+        self._matches_table.setColumnWidth(1, 100)
+        self._matches_table.setColumnWidth(2, 120)
+        self._matches_table.setColumnWidth(4, 100)
+        self._matches_table.itemSelectionChanged.connect(self._on_match_selected)
+        matches_layout.addWidget(self._matches_table)
+
+        layout.addWidget(matches_group)
+
+        # Status label
+        self._status_label = QLabel("Zoeken naar matches...")
+        layout.addWidget(self._status_label)
+
+        # Buttons
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self._on_accept)
+        button_box.rejected.connect(self.reject)
+        self._ok_btn = button_box.button(QDialogButtonBox.Ok)
+        self._ok_btn.setEnabled(False)
+        layout.addWidget(button_box)
+
+    def _search_matches(self):
+        """Zoek naar potentiële matches."""
+        self._status_label.setText("Zoeken naar matches...")
+        self._matches_table.setRowCount(0)
+        days = self._days_spin.value()
+        self._viewmodel.find_potential_links(self._transaction["id"], days=days)
+
+    def update_matches(self, matches):
+        """
+        Update de matches tabel met gevonden matches.
+
+        Args:
+            matches: List van tuples (id, datum, bedrag, naam, omschrijving, already_linked)
+        """
+        self._matches = matches
+        self._matches_table.setUpdatesEnabled(False)
+        self._matches_table.setRowCount(len(matches))
+
+        for row, match in enumerate(matches):
+            match_id, datum, bedrag, naam, omschrijving, already_linked = match
+
+            self._matches_table.setItem(row, 0, QTableWidgetItem(str(datum)))
+            self._matches_table.setItem(row, 1, QTableWidgetItem(f"€{bedrag:,.2f}"))
+            self._matches_table.setItem(row, 2, QTableWidgetItem(str(naam)))
+            self._matches_table.setItem(row, 3, QTableWidgetItem(str(omschrijving)))
+
+            status_item = QTableWidgetItem()
+            if already_linked:
+                status_item.setText("Reeds gekoppeld")
+                status_item.setForeground(Qt.gray)
+            else:
+                status_item.setText("Koppelen")
+                status_item.setForeground(Qt.darkGreen)
+            self._matches_table.setItem(row, 4, status_item)
+
+        self._matches_table.setUpdatesEnabled(True)
+
+        if matches:
+            self._status_label.setText(f"{len(matches)} potentiële match(es) gevonden")
+        else:
+            self._status_label.setText(
+                "Geen matches gevonden. De tegenrekening is mogelijk van een andere rekening."
+            )
+
+    def _on_match_selected(self):
+        """Handle match geselecteerd in de tabel."""
+        selected = self._matches_table.selectedItems()
+        if selected:
+            row = selected[0].row()
+            if row < len(self._matches):
+                self._selected_match_id = self._matches[row][0]
+                self._ok_btn.setEnabled(True)
+                return
+        self._selected_match_id = None
+        self._ok_btn.setEnabled(False)
+
+    def _on_accept(self):
+        """Handle accept - koppel de transacties."""
+        if self._selected_match_id:
+            self._viewmodel.link_transactions(
+                self._transaction["id"], self._selected_match_id
+            )
+            self.accept()
