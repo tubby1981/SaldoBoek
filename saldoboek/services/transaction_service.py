@@ -51,6 +51,66 @@ class TransactionService:
         result = self._db.execute(query, (effective_gebruiker_id,), fetch=True)
         return [row[0] for row in result if row[0]]
 
+    def get_all_categories_with_counts(self, gebruiker_id=None, jaar=None, maand=None):
+        """
+        Haal alle categorieën met hun transaction counts.
+
+        Dit haalt ALLE categorieën op (ook degene zonder transacties) en combineert
+        dit met de bijbehorende transaction counts. Optioneel gefilterd op jaar/maand.
+
+        Args:
+            gebruiker_id: Gebruiker ID (optional, uses self._gebruiker_id if None)
+            jaar: Optioneel jaar om op te filteren
+            maand: Optioneel maand om op te filteren (1-12)
+
+        Returns:
+            List van tuples: [(categorie_naam, transaction_count, categorie_type), ...]
+            Gesorteerd op categorie_naam
+        """
+        effective_gebruiker_id = (
+            gebruiker_id if gebruiker_id is not None else self._gebruiker_id
+        )
+        if effective_gebruiker_id is None:
+            return []
+
+        # Haal alle categorieën voor deze gebruiker
+        query = """
+            SELECT naam, type
+            FROM categorieen
+            WHERE gebruiker_id = ?
+            ORDER BY naam
+        """
+        categories = self._db.execute(query, (effective_gebruiker_id,), fetch=True)
+
+        # Bouw de count query met optionele filters
+        count_query = """
+            SELECT categorie, COUNT(*) as count
+            FROM transacties
+            WHERE gebruiker_id = ? AND categorie IS NOT NULL AND categorie != ''
+        """
+        count_params = [effective_gebruiker_id]
+
+        if jaar:
+            count_query += " AND strftime('%Y', datum) = ?"
+            count_params.append(str(jaar))
+
+        if maand:
+            count_query += " AND strftime('%m', datum) = ?"
+            count_params.append(f"{maand:02d}")
+
+        count_query += " GROUP BY categorie"
+
+        counts = self._db.execute(count_query, tuple(count_params), fetch=True)
+        count_dict = {row[0]: row[1] for row in counts}
+
+        # Combineer: alle categorieën met hun count (0 als geen transacties)
+        result = []
+        for cat_name, cat_type in categories:
+            tx_count = count_dict.get(cat_name, 0)
+            result.append((cat_name, tx_count, cat_type))
+
+        return result
+
     def get_transactions(self, filters=None, gebruiker_id=None):
         """Haal transacties op met optionele filters."""
         query = "SELECT * FROM transacties WHERE 1=1"

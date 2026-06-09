@@ -28,7 +28,12 @@ class TransactionsViewModel(QObject):
     loading_finished = Signal()
     error_occurred = Signal(str)
     stats_updated = Signal(dict)  # {inkomsten, uitgaven, saldo}
-    filter_options_updated = Signal(list, list)  # years, categories
+    filter_options_updated = Signal(
+        list, list
+    )  # years, categories (legacy: just names)
+    filter_options_updated_ex = Signal(
+        list, list
+    )  # years, [(name, count, type), ...] (extended with counts)
     category_updated = Signal(int, str)  # transactie_id, nieuwe_categorie
     potential_links_found = Signal(
         list
@@ -62,6 +67,7 @@ class TransactionsViewModel(QObject):
         # Beschikbare opties
         self._available_years = []
         self._available_categories = []
+        self._available_categories_ex = []  # Extended: [(name, count, type), ...]
 
     def set_gebruiker_id(self, gebruiker_id: int) -> None:
         """Stel de gebruiker ID in en laad initiële data."""
@@ -77,14 +83,48 @@ class TransactionsViewModel(QObject):
             self._available_years = self._service.get_available_years(
                 self._gebruiker_id
             )
+            # Legacy signal voor backward compatibiliteit
             self._available_categories = self._service.get_available_categories(
                 self._gebruiker_id
             )
             self.filter_options_updated.emit(
                 self._available_years, self._available_categories
             )
+
+            # Nieuw extended signal met counts - haal alle categorieën op
+            all_cats_with_counts = self._service.get_all_categories_with_counts(
+                self._gebruiker_id
+            )
+            self._available_categories_ex = all_cats_with_counts
+            self.filter_options_updated_ex.emit(
+                self._available_years, all_cats_with_counts
+            )
         except Exception as e:
             logger.error("Fout bij laden filter opties: %s", e)
+
+    def _load_filter_options_with_filters(self, jaar=None, maand=None) -> None:
+        """
+        Laad filter opties met specifieke jaar/maand filters voor accurate counts.
+
+        Dit wordt aangeroepen na het laden van transacties om de category counts
+        te updaten gebaseerd op de huidige jaar/maand selectie.
+        """
+        if not self._service or not self._gebruiker_id:
+            return
+
+        try:
+            # Haal category counts met de huidige jaar/maand filters
+            all_cats_with_counts = self._service.get_all_categories_with_counts(
+                self._gebruiker_id, jaar=jaar, maand=maand
+            )
+            self._available_categories_ex = all_cats_with_counts
+
+            # Emit met current filters voor accurate counts
+            self.filter_options_updated_ex.emit(
+                self._available_years, all_cats_with_counts
+            )
+        except Exception as e:
+            logger.error("Fout bij laden gefilterde category counts: %s", e)
 
     def load_transactions(self, filters: Optional[dict] = None) -> None:
         """
@@ -117,7 +157,10 @@ class TransactionsViewModel(QObject):
             self.count_updated.emit(len(self._all_transactions))
             self.transactions_loaded.emit(self.get_page_data())
             self._update_stats()
-            self._load_filter_options()
+            # Herlaad category counts met de huidige jaar/maand filters
+            jaar = self._filters.get("jaar")
+            maand = self._filters.get("maand")
+            self._load_filter_options_with_filters(jaar=jaar, maand=maand)
 
         except Exception as e:
             logger.error("Fout bij laden transacties: %s", e)

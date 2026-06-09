@@ -239,6 +239,164 @@ class CategoryService:
         logger.info("%d transacties hercategoriseerd", hercategoriseerd)
         return hercategoriseerd
 
+    def get_transactions_by_rule(self, zoekterm, gebruiker_id):
+        """
+        Haal transacties op die matchen met een zoekterm.
+
+        Args:
+            zoekterm: Zoekterm om op te matchen
+            gebruiker_id: Gebruiker ID
+
+        Returns:
+            DataFrame met transacties
+        """
+        query = """
+            SELECT id, datum, naam, omschrijving, bedrag, categorie
+            FROM transacties
+            WHERE gebruiker_id = ?
+            AND (naam LIKE ? OR omschrijving LIKE ?)
+        """
+        like_pattern = f"%{zoekterm}%"
+        params = (gebruiker_id, like_pattern, like_pattern)
+        return self._db.query_df(query, params)
+
+    def uncategorize_transactions(self, transactie_ids, gebruiker_id):
+        """
+        Zet de categorie van transacties op NULL (ongecategoriseerd).
+
+        Args:
+            transactie_ids: List van transactie IDs
+            gebruiker_id: Gebruiker ID
+
+        Returns:
+            Aantal gedecategoriseerde transacties
+        """
+        if not transactie_ids:
+            return 0
+
+        hercategoriseerd = 0
+        for tx_id in transactie_ids:
+            success = self._db.uncategorize_transaction(tx_id, gebruiker_id)
+            if success:
+                hercategoriseerd += 1
+
+        logger.info("%d transacties gedecategoriseerd", hercategoriseerd)
+        return hercategoriseerd
+
+    def recategorize_specific_transactions(self, transactie_ids, gebruiker_id):
+        """
+        Hercategoriseer specifieke transacties op basis van hun naam/omschrijving.
+
+        Dit doorloopt alle beschikbare regels en probeert een nieuwe categorie te vinden.
+
+        Args:
+            transactie_ids: List van transactie IDs om te hercategoriseren
+            gebruiker_id: Gebruiker ID
+
+        Returns:
+            Aantal hercategoriseerde transacties
+        """
+        if not transactie_ids:
+            return 0
+
+        # Haal de transacties op
+        query = """
+            SELECT id, datum, naam, omschrijving, bedrag, categorie
+            FROM transacties
+            WHERE id IN ({})
+            AND gebruiker_id = ?
+        """.format(",".join("?" for _ in transactie_ids))
+        params = tuple(transactie_ids) + (gebruiker_id,)
+        df = self._db.query_df(query, params)
+
+        if df.empty:
+            return 0
+
+        hercategoriseerd = 0
+        for _, row in df.iterrows():
+            oude_categorie = row["categorie"]
+            omschrijving = str(row["omschrijving"]) if row["omschrijving"] else ""
+            nieuwe_categorie = self._categorizer.categorize(row["naam"], omschrijving)
+
+            if nieuwe_categorie and nieuwe_categorie != oude_categorie:
+                self._categorizer.update_transaction_category(
+                    {
+                        "datum": row["datum"],
+                        "omschrijving": row["omschrijving"],
+                        "bedrag": row["bedrag"],
+                    },
+                    nieuwe_categorie,
+                )
+                hercategoriseerd += 1
+
+        logger.info("%d specifieke transacties hercategoriseerd", hercategoriseerd)
+        return hercategoriseerd
+
+    def recategorize_transactions_by_rule(
+        self, oude_zoekterm, nieuwe_zoekterm, categorie, gebruiker_id
+    ):
+        """
+        Hercategoriseer alle transacties die matchen met een zoekterm.
+
+        Dit is specifiek voor wanneer een regel wordt gewijzigd en we de
+        bestaande transacties die met die regel overeenkomen ook willen bijwerken.
+
+        Args:
+            oude_zoekterm: Oorspronkelijke zoekterm (om bestaande transacties te vinden)
+            nieuwe_zoekterm: Nieuwe zoekterm (kan dezelfde blijven)
+            categorie: Nieuwe categorie om naartoe te categoriseren
+            gebruiker_id: Gebruiker ID
+
+        Returns:
+            Aantal hercategoriseerde transacties
+        """
+        # Match transacties die de oude of nieuwe zoekterm bevatten in naam of omschrijving
+        # Dit zorgt ervoor dat bij een gewijzigde zoekterm de bestaande transacties
+        # ook worden hercategoriseerd
+        query = """
+            SELECT id, datum, naam, omschrijving, bedrag, categorie
+            FROM transacties
+            WHERE gebruiker_id = ?
+            AND (naam LIKE ? OR omschrijving LIKE ? OR naam LIKE ? OR omschrijving LIKE ?)
+            AND categorie != ?
+        """
+        # Zoektermen met wildcards voor partial match
+        oude_pattern = f"%{oude_zoekterm}%"
+        nieuwe_pattern = f"%{nieuwe_zoekterm}%"
+        params = (
+            gebruiker_id,
+            oude_pattern,
+            oude_pattern,
+            nieuwe_pattern,
+            nieuwe_pattern,
+            categorie,
+        )
+
+        df = self._db.query_df(query, params)
+
+        if df.empty:
+            return 0
+
+        hercategoriseerd = 0
+        for _, row in df.iterrows():
+            self._categorizer.update_transaction_category(
+                {
+                    "datum": row["datum"],
+                    "omschrijving": row["omschrijving"],
+                    "bedrag": row["bedrag"],
+                },
+                categorie,
+            )
+            hercategoriseerd += 1
+
+        logger.info(
+            "%d transacties hercategoriseerd naar %s obv regel '%s'",
+            hercategoriseerd,
+            categorie,
+            nieuwe_zoekterm,
+        )
+        return hercategoriseerd
+
     def get_category_stats(self, gebruiker_id):
         """
         Haal statistieken op over categorieën.

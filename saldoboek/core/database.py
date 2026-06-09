@@ -574,6 +574,17 @@ class DatabaseManager:
             conn.commit()
             return cursor.rowcount > 0
 
+    def uncategorize_transaction(self, transaction_id, gebruiker_id):
+        """Zet de categorie van een transactie op NULL (ongecategoriseerd)."""
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE transacties SET categorie = NULL WHERE id = ? AND gebruiker_id = ?",
+                (transaction_id, gebruiker_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
     def get_transaction_by_id(self, transaction_id, gebruiker_id):
         """Haal een enkele transactie op basis van ID."""
         with self._connect() as conn:

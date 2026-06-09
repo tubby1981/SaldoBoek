@@ -244,6 +244,10 @@ class TransactionsView(QWidget):
 
         # Filter options signal
         self._viewmodel.filter_options_updated.connect(self._on_filter_options_updated)
+        # Extended filter options signal (met counts)
+        self._viewmodel.filter_options_updated_ex.connect(
+            self._on_filter_options_updated_ex
+        )
 
         # Link signals
         self._viewmodel.potential_links_found.connect(self._on_potential_links_found)
@@ -316,6 +320,53 @@ class TransactionsView(QWidget):
                 self._category_combo.setCurrentIndex(idx)
         self._category_combo.blockSignals(False)
 
+    def _on_filter_options_updated_ex(self, years, categories_with_counts):
+        """
+        Handle extended filter opties update van ViewModel.
+
+        Dit signal bevat alle categorieën (ook zonder transacties) met counts.
+        Categorieën zonder transacties krijgen de suffix ' (leeg)'.
+        """
+        # categories_with_counts is list of (name, count, type) tuples
+        # Bewaar huidige selecties
+        current_year = self._year_combo.currentText()
+        current_month = self._month_combo.currentIndex()
+        current_category = self._category_combo.currentText()
+
+        # Years - zelfde als voorheen
+        self._year_combo.blockSignals(True)
+        self._year_combo.clear()
+        self._year_combo.addItems(["Alle"] + [str(y) for y in years])
+        if current_year and current_year != "Alle":
+            idx = self._year_combo.findText(current_year)
+            if idx >= 0:
+                self._year_combo.setCurrentIndex(idx)
+        self._year_combo.blockSignals(False)
+
+        # Categories - met (leeg) suffix voor categorieën zonder transacties
+        self._category_combo.blockSignals(True)
+        self._category_combo.clear()
+        self._category_combo.addItem("Alle")
+
+        for cat_name, tx_count, cat_type in categories_with_counts:
+            if tx_count == 0:
+                display_text = f"{cat_name} (leeg)"
+            else:
+                display_text = f"{cat_name} ({tx_count})"
+            # Store userData voor de daadwerkelijke categorienaam
+            self._category_combo.addItem(display_text, cat_name)
+
+        # Herstel selectie als deze nog bestaat
+        if current_category and current_category != "Alle":
+            # Strip suffix voor lookup
+            lookup = current_category
+            if " (" in current_category:
+                lookup = current_category.split(" (")[0]
+            idx = self._category_combo.findData(lookup)
+            if idx >= 0:
+                self._category_combo.setCurrentIndex(idx)
+        self._category_combo.blockSignals(False)
+
     # User action handlers (forward to ViewModel)
 
     def _on_refresh_clicked(self):
@@ -337,10 +388,15 @@ class TransactionsView(QWidget):
         if month_index > 0:
             filters["maand"] = month_index
 
-        # Category
+        # Category - gebruik userData als die er is (van _on_filter_options_updated_ex)
         category_text = self._category_combo.currentText()
         if category_text and category_text != "Alle":
-            filters["categorie"] = category_text
+            # Haal de echte categorienaam uit userData
+            categorie = self._category_combo.currentData()
+            if categorie is None:
+                # Fallback: misschien waren we bezig met de oude signal
+                categorie = category_text
+            filters["categorie"] = categorie
 
         # Search
         search_text = self._search_input.text().strip()

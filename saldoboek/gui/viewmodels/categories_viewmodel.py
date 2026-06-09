@@ -226,8 +226,12 @@ class CategoriesViewModel(QObject):
             self.error_occurred.emit("Geen service of gebruiker ingesteld")
             return False
 
+        # Alleen bewerkbare regels (user rules, niet global/standard) kunnen worden aangepast
         if not self._service.is_rule_editable(oude_zoekterm):
-            self.error_occurred.emit("Globale regels kunnen niet bewerkt worden")
+            self.error_occurred.emit(
+                "Globale regels kunnen niet worden bewerkt. "
+                "Maak een eigen regel aan als je dit anders wilt categoriseren."
+            )
             return False
 
         try:
@@ -243,12 +247,73 @@ class CategoriesViewModel(QObject):
             self.error_occurred.emit(str(e))
             return False
 
-    def delete_rule(self, zoekterm: str) -> bool:
+    def recategorize_by_rule(
+        self, oude_zoekterm: str, nieuwe_zoekterm: str, nieuwe_categorie: str
+    ) -> int:
+        """
+        Bewerk een regel EN pas bestaande transacties toe.
+
+        Dit is een combinatie van update_rule + recategorize_transactions.
+        Eerst wordt de regel gewijzigd, daarna worden alle transacties die
+        matchen met de nieuwe zoekterm hercategoriseerd naar de nieuwe categorie.
+
+        Args:
+            oude_zoekterm: Huidige zoekterm
+            nieuwe_zoekterm: Nieuwe zoekterm (kan dezelfde blijven)
+            nieuwe_categorie: Nieuwe categorie
+
+        Returns:
+            Aantal hercategoriseerde transacties, of -1 bij fout
+        """
+        if not self._service or not self._gebruiker_id:
+            self.error_occurred.emit("Geen service of gebruiker ingesteld")
+            return -1
+
+        # Alleen bewerkbare regels (user rules, niet global/standard) kunnen worden aangepast
+        if not self._service.is_rule_editable(oude_zoekterm):
+            self.error_occurred.emit(
+                "Globale regels kunnen niet worden bewerkt. "
+                "Maak een eigen regel aan als je dit anders wilt categoriseren."
+            )
+            return -1
+
+        try:
+            # 1. Update de regel
+            success = self._service.update_rule(
+                oude_zoekterm, nieuwe_zoekterm, nieuwe_categorie, self._gebruiker_id
+            )
+            if not success:
+                return -1
+
+            # 2. Hercategoriseer transacties die matchen met de oude of nieuwe zoekterm
+            # (alle transacties met deze omschrijving die nu volgens de nieuwe regel
+            # anders gecategoriseerd zouden worden)
+            count = self._service.recategorize_transactions_by_rule(
+                oude_zoekterm, nieuwe_zoekterm, nieuwe_categorie, self._gebruiker_id
+            )
+
+            self.load_all()  # Refresh
+            logger.info(
+                "Regel '%s' bijgewerkt naar '%s' -> %s, %d transacties hercategoriseerd",
+                oude_zoekterm,
+                nieuwe_zoekterm,
+                nieuwe_categorie,
+                count,
+            )
+            return count
+
+        except Exception as e:
+            logger.error("Fout bij bewerken regel en hercategoriseren: %s", e)
+            self.error_occurred.emit(str(e))
+            return -1
+
+    def delete_rule(self, zoekterm: str, actie: str = None) -> bool:
         """
         Verwijder een categorisatie regel.
 
         Args:
             zoekterm: Zoekterm van de regel
+            actie: None = geen actie op transacties, 'uncategorize' = ongecategoriseer, 'recategorize' = hercategoriseer
 
         Returns:
             True als gelukt, False bij fout
@@ -262,15 +327,66 @@ class CategoriesViewModel(QObject):
             return False
 
         try:
+            # Haal eerst de transacties die door deze regel worden beheerd
+            transacties_df = self._service.get_transactions_by_rule(
+                zoekterm, self._gebruiker_id
+            )
+            transactie_ids = (
+                transacties_df["id"].tolist() if not transacties_df.empty else []
+            )
+
+            # Verwijder de regel
             success = self._service.delete_rule(zoekterm, self._gebruiker_id)
-            if success:
-                self.load_all()  # Refresh
-                logger.info("Regel verwijderd: %s", zoekterm)
-            return success
+            if not success:
+                return False
+
+            # Behandel de transacties op basis van de gekozen actie
+            if actie == "uncategorize" and transactie_ids:
+                count = self._service.uncategorize_transactions(
+                    transactie_ids, self._gebruiker_id
+                )
+                logger.info(
+                    "Regel '%s' verwijderd en %d transacties gedecategoriseerd",
+                    zoekterm,
+                    count,
+                )
+            elif actie == "recategorize" and transactie_ids:
+                # Hercategoriseer specifieke transacties op basis van hun naam/omschrijving
+                count = self._service.recategorize_specific_transactions(
+                    transactie_ids, self._gebruiker_id
+                )
+                logger.info(
+                    "Regel '%s' verwijderd en %d transacties hercategoriseerd",
+                    zoekterm,
+                    count,
+                )
+
+            self.load_all()  # Refresh
+            logger.info("Regel verwijderd: %s", zoekterm)
+            return True
         except Exception as e:
             logger.error("Fout bij verwijderen regel: %s", e)
             self.error_occurred.emit(str(e))
             return False
+
+    def get_transactions_count_by_rule(self, zoekterm: str) -> int:
+        """
+        Haal het aantal transacties op dat matcht met een zoekterm.
+
+        Args:
+            zoekterm: Zoekterm van de regel
+
+        Returns:
+            Aantal matching transacties
+        """
+        if not self._service or not self._gebruiker_id:
+            return 0
+
+        try:
+            df = self._service.get_transactions_by_rule(zoekterm, self._gebruiker_id)
+            return len(df) if not df.empty else 0
+        except Exception:
+            return 0
 
     def is_category_editable(self, naam: str) -> bool:
         """Check of een categorie bewerkbaar is door de gebruiker."""

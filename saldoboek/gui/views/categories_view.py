@@ -5,6 +5,7 @@ import logging
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
     QDialog,
     QFrame,
@@ -171,12 +172,23 @@ class EditRuleDialog(QDialog):
     rule_updated = Signal(
         str, str, str
     )  # oude_zoekterm, nieuwe_zoekterm, nieuwe_categorie
+    rule_updated_with_apply = Signal(
+        str, str, str, bool
+    )  # oude_zoekterm, nieuwe_zoekterm, nieuwe_categorie, apply_to_existing
 
-    def __init__(self, oude_zoekterm, oude_categorie, categorie_namen, parent=None):
+    def __init__(
+        self,
+        oude_zoekterm,
+        oude_categorie,
+        categorie_namen,
+        is_global=False,
+        parent=None,
+    ):
         super().__init__(parent)
         self._oude_zoekterm = oude_zoekterm
+        self._is_global = is_global
         self.setWindowTitle(f"Regel Bewerken: {oude_zoekterm}")
-        self.setMinimumWidth(400)
+        self.setMinimumWidth(450)
         self._setup_ui(oude_zoekterm, oude_categorie, categorie_namen)
 
     def _setup_ui(self, oude_zoekterm, oude_categorie, categorie_namen):
@@ -196,11 +208,22 @@ class EditRuleDialog(QDialog):
         cat_layout = QHBoxLayout()
         cat_layout.addWidget(QLabel("Categorie:"))
         self._cat_combo = QComboBox()
-        self._cat_combo.addItems(categorie_namen)
+        sorted_categories = sorted(categorie_namen)
+        self._cat_combo.addItems(sorted_categories)
         if oude_categorie in categorie_namen:
             self._cat_combo.setCurrentText(oude_categorie)
         cat_layout.addWidget(self._cat_combo)
         layout.addLayout(cat_layout)
+
+        # Checkbox voor bestaande transacties
+        self._apply_checkbox = QCheckBox(
+            "Ook bestaande transacties met deze zoekterm hercategoriseren"
+        )
+        self._apply_checkbox.setToolTip(
+            "Als aangevinkt, worden alle bestaande transacties die matchen met "
+            "deze zoekterm ook naar de nieuwe categorie verplaatst"
+        )
+        layout.addWidget(self._apply_checkbox)
 
         # Buttons
         btn_layout = QHBoxLayout()
@@ -224,8 +247,12 @@ class EditRuleDialog(QDialog):
             return
 
         nieuwe_categorie = self._cat_combo.currentText()
+        apply_to_existing = self._apply_checkbox.isChecked()
 
-        self.rule_updated.emit(self._oude_zoekterm, nieuwe_zoekterm, nieuwe_categorie)
+        # Gebruik het uitgebreide signaal
+        self.rule_updated_with_apply.emit(
+            self._oude_zoekterm, nieuwe_zoekterm, nieuwe_categorie, apply_to_existing
+        )
         self.accept()
 
 
@@ -249,6 +276,10 @@ class CategoriesView(QWidget):
         self._viewmodel = viewmodel
         self._editable_categories = set()  # set van bewerkbare categorie namen
         self._editable_rules = set()  # set van bewerkbare zoektermen
+        # Opslag voor originele data voor filtering
+        self._all_categories = []  # [(naam, type, beschrijving), ...]
+        self._all_rules = []  # [(zoekterm, categorie), ...]
+        self._categories_stats = {}  # Stats per categorie
         self._setup_ui()
         self._connect_signals()
 
@@ -289,18 +320,32 @@ class CategoriesView(QWidget):
         self._stats_label.setObjectName("stats_label")
         categories_layout.addWidget(self._stats_label)
 
+        # Search box voor categorieën
+        cat_search_frame = QFrame()
+        cat_search_layout = QHBoxLayout(cat_search_frame)
+        cat_search_layout.addWidget(QLabel("Zoeken:"))
+        self._cat_search_input = QLineEdit()
+        self._cat_search_input.setObjectName("cat_search_input")
+        self._cat_search_input.setPlaceholderText("Zoek in categorieën...")
+        self._cat_search_input.textChanged.connect(self._on_cat_search_changed)
+        cat_search_layout.addWidget(self._cat_search_input)
+        cat_search_layout.addStretch()
+        categories_layout.addWidget(cat_search_frame)
+
         # Categories table
         self._categories_table = QTableWidget()
         self._categories_table.setObjectName("categories_table")
-        self._categories_table.setColumnCount(5)
+        self._categories_table.setColumnCount(6)
         self._categories_table.setHorizontalHeaderLabels(
-            ["Categorie", "Type", "Aantal", "Totaal Bedrag", "Acties"]
+            ["Categorie", "Type", "Aantal", "Totaal Bedrag", "Acties", "Status"]
         )
         self._categories_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._categories_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self._categories_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self._categories_table.verticalHeader().setVisible(False)
         self._categories_table.setAlternatingRowColors(True)
+        self._categories_table.setSortingEnabled(True)
+        self._categories_table.sortByColumn(0, Qt.AscendingOrder)
         categories_layout.addWidget(self._categories_table)
 
         layout.addWidget(categories_tab)
@@ -323,16 +368,32 @@ class CategoriesView(QWidget):
 
         rules_layout.addWidget(rules_header)
 
+        # Search box voor regels
+        rule_search_frame = QFrame()
+        rule_search_layout = QHBoxLayout(rule_search_frame)
+        rule_search_layout.addWidget(QLabel("Zoeken:"))
+        self._rule_search_input = QLineEdit()
+        self._rule_search_input.setObjectName("rule_search_input")
+        self._rule_search_input.setPlaceholderText("Zoek in regels...")
+        self._rule_search_input.textChanged.connect(self._on_rule_search_changed)
+        rule_search_layout.addWidget(self._rule_search_input)
+        rule_search_layout.addStretch()
+        rules_layout.addWidget(rule_search_frame)
+
         # Rules table
         self._rules_table = QTableWidget()
         self._rules_table.setObjectName("rules_table")
-        self._rules_table.setColumnCount(3)
-        self._rules_table.setHorizontalHeaderLabels(["Zoekterm", "Categorie", "Acties"])
+        self._rules_table.setColumnCount(4)
+        self._rules_table.setHorizontalHeaderLabels(
+            ["Zoekterm", "Categorie", "Acties", "Status"]
+        )
         self._rules_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._rules_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self._rules_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self._rules_table.verticalHeader().setVisible(False)
         self._rules_table.setAlternatingRowColors(True)
+        self._rules_table.setSortingEnabled(True)
+        self._rules_table.sortByColumn(0, Qt.AscendingOrder)
         rules_layout.addWidget(self._rules_table)
 
         layout.addWidget(rules_tab)
@@ -357,37 +418,138 @@ class CategoriesView(QWidget):
         self._viewmodel.loading_finished.connect(self._on_loading_finished)
         self._viewmodel.error_occurred.connect(self._on_error)
 
-    def _create_action_buttons(self, table, row, edit_callback, delete_callback):
-        """Maak edit/delete buttons voor een tabelrij."""
+    def _create_action_buttons(
+        self, table, row, action_column, edit_callback, delete_callback
+    ):
+        """Maak edit/delete buttons voor een tabelrij.
+
+        Args:
+            table: De QTableWidget
+            row: Rij index
+            action_column: Kolom index voor de actie-knoppen
+            edit_callback: Callback voor bewerken
+            delete_callback: Callback voor verwijderen
+        """
         container = QFrame()
         container.setStyleSheet("background-color: transparent;")
         layout = QHBoxLayout(container)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(5)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(2)
 
         edit_btn = QPushButton("✏️")
-        edit_btn.setFixedSize(30, 24)
+        edit_btn.setFixedSize(26, 22)
         edit_btn.clicked.connect(edit_callback)
         edit_btn.setToolTip("Bewerken")
         layout.addWidget(edit_btn)
 
         delete_btn = QPushButton("🗑️")
-        delete_btn.setFixedSize(30, 24)
+        delete_btn.setFixedSize(26, 22)
         delete_btn.clicked.connect(delete_callback)
         delete_btn.setToolTip("Verwijderen")
         layout.addWidget(delete_btn)
 
-        table.setCellWidget(row, table.columnCount() - 1, container)
+        # Acties in opgegeven kolom
+        table.setCellWidget(row, action_column, container)
         return container
 
     # ViewModel signal handlers
 
     def _on_categories_loaded(self, categorieën):
         """Handle categorieën geladen van ViewModel."""
+        # Bewaar originele data voor filtering
+        self._all_categories = list(categorieën)
+        # Render de tabel
+        self._render_categories_table(categorieën)
+
+    def _on_rules_loaded(self, rules):
+        """Handle regels geladen van ViewModel."""
+        # Bewaar originele data voor filtering
+        self._all_rules = list(rules)
+        # Render de tabel
+        self._render_rules_table(rules)
+
+    def _on_stats_loaded(self, stats):
+        """Handle stats geladen van ViewModel."""
+        self._categories_stats = stats
+
+        total_stats = self._viewmodel.get_total_stats()
+
+        self._stats_label.setText(
+            f"{total_stats.get('aantal_categorieën', 0)} categorieën | "
+            f"{total_stats.get('totaal_aantal', 0)} getransacteerd | "
+            f"€{total_stats.get('totaal_bedrag', 0):,.2f} totaal"
+        )
+
+        # Her-render de categorieën tabel als er al data is
+        if self._all_categories:
+            self._render_categories_table(self._all_categories)
+
+    def _on_loading_started(self):
+        """Handle laden gestart van ViewModel."""
+        self._refresh_btn.setEnabled(False)
+
+    def _on_loading_finished(self):
+        """Handle laden voltooid van ViewModel."""
+        self._refresh_btn.setEnabled(True)
+
+    def _on_error(self, error_msg):
+        """Handle error van ViewModel."""
+        logger.error("Categorieën error: %s", error_msg)
+        QMessageBox.warning(self, "Fout", error_msg)
+
+    def _on_cat_search_changed(self, text):
+        """Filter categorieën op basis van zoekterm."""
+        text = text.lower().strip()
+        if not text:
+            # Toon alle categorieën
+            filtered = self._all_categories
+        else:
+            # Filter op naam of type
+            filtered = [
+                cat
+                for cat in self._all_categories
+                if text in cat[0].lower() or text in str(cat[1]).lower()
+            ]
+        self._render_categories_table(filtered)
+
+    def _on_rule_search_changed(self, text):
+        """Filter regels op basis van zoekterm."""
+        text = text.lower().strip()
+        if not text:
+            # Toon alle regels
+            filtered = self._all_rules
+        else:
+            # Filter op zoekterm of categorie
+            filtered = [
+                rule
+                for rule in self._all_rules
+                if text in rule[0].lower() or text in rule[1].lower()
+            ]
+        self._render_rules_table(filtered)
+
+    def _render_categories_table(self, categorieën):
+        """Render de categorieën tabel met de gegeven data."""
         self._categories_table.setUpdatesEnabled(False)
+
+        # Disable sorting tijdelijk om bug in PySide te voorkomen
+        # (setRowCount + setItem + sorting veroorzaakt verkeerde row placement)
+        was_sorting_enabled = self._categories_table.isSortingEnabled()
+        self._categories_table.setSortingEnabled(False)
+
+        # Bewaar huidige state
+        old_row_count = self._categories_table.rowCount()
+
+        # Verwijder cell widgets voorzichtig (zonder deleteLater te roepen op alle widgets)
+        for row in range(old_row_count):
+            self._categories_table.removeCellWidget(
+                row, 4
+            )  # Verwijder alleen acties kolom widget
+
+        # Reset tabel en wis inhoud
+        self._categories_table.setRowCount(0)
         self._categories_table.setRowCount(len(categorieën))
 
-        stats = self._viewmodel.get_stats()
+        stats = self._categories_stats  # Gebruik opgeslagen stats
         self._editable_categories.clear()
 
         for row, (naam, cat_type, beschrijving) in enumerate(categorieën):
@@ -415,15 +577,19 @@ class CategoriesView(QWidget):
                 self._create_action_buttons(
                     self._categories_table,
                     row,
+                    4,  # Acties kolom voor categorieën tabel (6 kolommen: 0-5)
                     lambda checked, n=naam, t=cat_type, b=beschrijving: (
                         self._show_edit_category_dialog(n, t, b)
                     ),
                     lambda checked, n=naam: self._on_delete_category(n),
                 )
             else:
-                # Globale categorie - toon slotje en disable buttons
-                self._categories_table.setItem(row, 4, QTableWidgetItem("🔒 Globaal"))
-                self._categories_table.item(row, 4).setForeground(Qt.gray)
+                # Globale categorie - toon slotje in Status kolom
+                self._categories_table.setItem(row, 5, QTableWidgetItem("🔒 Globaal"))
+                self._categories_table.item(row, 5).setForeground(Qt.gray)
+
+        # Herstel sorting
+        self._categories_table.setSortingEnabled(was_sorting_enabled)
 
         header = self._categories_table.horizontalHeader()
         # Interactive allows user to resize columns with mouse
@@ -432,18 +598,39 @@ class CategoriesView(QWidget):
         header.setSectionResizeMode(2, QHeaderView.Interactive)
         header.setSectionResizeMode(3, QHeaderView.Interactive)
         header.setSectionResizeMode(4, QHeaderView.Interactive)
+        header.setSectionResizeMode(5, QHeaderView.Interactive)
         # Set initial reasonable widths
         self._categories_table.setColumnWidth(0, 150)  # Categorie
-        self._categories_table.setColumnWidth(1, 100)  # Type
-        self._categories_table.setColumnWidth(2, 80)  # Aantal
-        self._categories_table.setColumnWidth(3, 120)  # Totaal Bedrag
-        self._categories_table.setColumnWidth(4, 100)  # Acties
+        self._categories_table.setColumnWidth(1, 80)  # Type
+        self._categories_table.setColumnWidth(2, 70)  # Aantal
+        self._categories_table.setColumnWidth(3, 110)  # Totaal Bedrag
+        self._categories_table.setColumnWidth(4, 70)  # Acties
+        self._categories_table.setColumnWidth(5, 80)  # Status
 
         self._categories_table.setUpdatesEnabled(True)
 
-    def _on_rules_loaded(self, rules):
-        """Handle regels geladen van ViewModel."""
+    def _render_rules_table(self, rules):
+        """Render de regels tabel met de gegeven data."""
         self._rules_table.setUpdatesEnabled(False)
+
+        # Disable sorting tijdelijk om bug in PySide te voorkomen
+        was_sorting_enabled = self._rules_table.isSortingEnabled()
+        self._rules_table.setSortingEnabled(False)
+
+        # Bewaar huidige state
+        old_row_count = self._rules_table.rowCount()
+
+        # Verwijder cell widgets en items voorzichtig
+        for row in range(old_row_count):
+            self._rules_table.removeCellWidget(row, 2)  # Acties kolom
+            self._rules_table.removeCellWidget(row, 3)  # Status kolom
+            # Wis ook tekst items in kolom 3
+            item = self._rules_table.item(row, 3)
+            if item:
+                item.setText("")
+
+        # Reset tabel
+        self._rules_table.setRowCount(0)
         self._rules_table.setRowCount(len(rules))
         self._editable_rules.clear()
 
@@ -458,50 +645,33 @@ class CategoriesView(QWidget):
                 self._create_action_buttons(
                     self._rules_table,
                     row,
+                    2,  # Acties kolom voor regels tabel (4 kolommen: 0-3)
                     lambda checked, z=zoekterm, c=categorie: (
                         self._show_edit_rule_dialog(z, c)
                     ),
                     lambda checked, z=zoekterm: self._on_delete_rule(z),
                 )
             else:
-                # Globale regel - toon slotje en disable buttons
-                self._rules_table.setItem(row, 2, QTableWidgetItem("🔒 Globaal"))
-                self._rules_table.item(row, 2).setForeground(Qt.gray)
+                # Globale regel - toon slotje in Status kolom (3)
+                self._rules_table.setItem(row, 3, QTableWidgetItem("🔒 Globaal"))
+                self._rules_table.item(row, 3).setForeground(Qt.gray)
+
+        # Herstel sorting
+        self._rules_table.setSortingEnabled(was_sorting_enabled)
 
         header = self._rules_table.horizontalHeader()
         # Interactive allows user to resize columns with mouse
         header.setSectionResizeMode(0, QHeaderView.Interactive)
         header.setSectionResizeMode(1, QHeaderView.Interactive)
         header.setSectionResizeMode(2, QHeaderView.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.Interactive)
         # Set initial reasonable widths
         self._rules_table.setColumnWidth(0, 200)  # Zoekterm
         self._rules_table.setColumnWidth(1, 150)  # Categorie
-        self._rules_table.setColumnWidth(2, 100)  # Acties
+        self._rules_table.setColumnWidth(2, 80)  # Acties
+        self._rules_table.setColumnWidth(3, 80)  # Status
 
         self._rules_table.setUpdatesEnabled(True)
-
-    def _on_stats_loaded(self, stats):
-        """Handle stats geladen van ViewModel."""
-        total_stats = self._viewmodel.get_total_stats()
-
-        self._stats_label.setText(
-            f"{total_stats.get('aantal_categorieën', 0)} categorieën | "
-            f"{total_stats.get('totaal_aantal', 0)} getransacteerd | "
-            f"€{total_stats.get('totaal_bedrag', 0):,.2f} totaal"
-        )
-
-    def _on_loading_started(self):
-        """Handle laden gestart van ViewModel."""
-        self._refresh_btn.setEnabled(False)
-
-    def _on_loading_finished(self):
-        """Handle laden voltooid van ViewModel."""
-        self._refresh_btn.setEnabled(True)
-
-    def _on_error(self, error_msg):
-        """Handle error van ViewModel."""
-        logger.error("Categorieën error: %s", error_msg)
-        QMessageBox.warning(self, "Fout", error_msg)
 
     # User action handlers
 
@@ -595,28 +765,115 @@ class CategoriesView(QWidget):
             logger.warning("Geen categorieën beschikbaar voor regel")
             return
 
-        dialog = EditRuleDialog(zoekterm, categorie, categorie_namen, self)
-        dialog.rule_updated.connect(self._on_rule_updated)
+        # Check of de regel globaal is
+        is_global = not self._viewmodel.is_rule_editable(zoekterm)
+
+        dialog = EditRuleDialog(zoekterm, categorie, categorie_namen, is_global, self)
+        dialog.rule_updated_with_apply.connect(self._on_rule_updated_with_apply)
         dialog.exec()
 
-    def _on_rule_updated(self, oude_zoekterm, nieuwe_zoekterm, nieuwe_categorie):
-        """Handle rule updated via dialog."""
-        self._viewmodel.update_rule(oude_zoekterm, nieuwe_zoekterm, nieuwe_categorie)
+    def _on_rule_updated_with_apply(
+        self, oude_zoekterm, nieuwe_zoekterm, nieuwe_categorie, apply_to_existing
+    ):
+        """Handle rule updated via dialog with option to apply to existing transactions."""
+        if apply_to_existing:
+            count = self._viewmodel.recategorize_by_rule(
+                oude_zoekterm, nieuwe_zoekterm, nieuwe_categorie
+            )
+            if count >= 0:
+                QMessageBox.information(
+                    self,
+                    "Regel Bijgewerkt",
+                    f"Regel bijgewerkt en {count} transactie(s) hercategoriseerd.",
+                )
+        else:
+            self._viewmodel.update_rule(
+                oude_zoekterm, nieuwe_zoekterm, nieuwe_categorie
+            )
+            QMessageBox.information(self, "Regel Bijgewerkt", "Regel is bijgewerkt.")
 
     def _on_delete_rule(self, zoekterm):
         """Handle delete rule request."""
-        msg = f"Wil je de regel '{zoekterm}' verwijderen?"
-        reply = QMessageBox.question(
-            self,
-            "Regel Verwijderen",
-            msg,
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
+        # Haal het aantal transacties dat door deze regel wordt beheerd
+        tx_count = self._viewmodel.get_transactions_count_by_rule(zoekterm)
 
-        if reply == QMessageBox.Yes:
-            success = self._viewmodel.delete_rule(zoekterm)
-            if success:
+        if tx_count == 0:
+            # Geen transacties gekoppeld, simpele bevestiging
+            msg = f"Wil je de regel '{zoekterm}' verwijderen?"
+            reply = QMessageBox.question(
+                self,
+                "Regel Verwijderen",
+                msg,
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if reply == QMessageBox.Yes:
+                success = self._viewmodel.delete_rule(zoekterm)
+                if success:
+                    QMessageBox.information(self, "Verwijderd", "Regel verwijderd.")
+        else:
+            # Er zijn transacties gekoppeld, toon keuzemogelijkheden
+            msg = (
+                f"De regel '{zoekterm}' beheert {tx_count} transactie(s).\n\n"
+                f"Wat wil je met deze transacties doen?"
+            )
+
+            # Maak custom dialog met buttons
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Regel Verwijderen")
+            dialog.setMinimumWidth(450)
+            layout = QVBoxLayout(dialog)
+
+            label = QLabel(msg)
+            label.setWordWrap(True)
+            layout.addWidget(label)
+
+            # Buttons
+            btn_layout = QVBoxLayout()
+
+            keep_btn = QPushButton("➖ Categorieën behouden")
+            keep_btn.clicked.connect(
+                lambda: self._do_delete_rule(zoekterm, None, dialog)
+            )
+            btn_layout.addWidget(keep_btn)
+
+            uncat_btn = QPushButton("📋 Ongecategoriseer maken")
+            uncat_btn.clicked.connect(
+                lambda: self._do_delete_rule(zoekterm, "uncategorize", dialog)
+            )
+            btn_layout.addWidget(uncat_btn)
+
+            recat_btn = QPushButton("🔄 Hercategoriseer (automatisch)")
+            recat_btn.clicked.connect(
+                lambda: self._do_delete_rule(zoekterm, "recategorize", dialog)
+            )
+            btn_layout.addWidget(recat_btn)
+
+            cancel_btn = QPushButton("Annuleren")
+            cancel_btn.clicked.connect(dialog.reject)
+            btn_layout.addWidget(cancel_btn)
+
+            layout.addLayout(btn_layout)
+            dialog.exec()
+
+    def _do_delete_rule(self, zoekterm, actie, dialog):
+        """Voer de daadwerkelijke verwijdering uit."""
+        dialog.accept()
+        success = self._viewmodel.delete_rule(zoekterm, actie)
+        if success:
+            if actie == "uncategorize":
+                QMessageBox.information(
+                    self,
+                    "Verwijderd",
+                    "Regel verwijderd en transacties ongecategoriseerd.",
+                )
+            elif actie == "recategorize":
+                QMessageBox.information(
+                    self,
+                    "Verwijderd",
+                    "Regel verwijderd en transacties hercategoriseerd.",
+                )
+            else:
                 QMessageBox.information(self, "Verwijderd", "Regel verwijderd.")
 
     # Public methods

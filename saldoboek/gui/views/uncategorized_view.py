@@ -309,7 +309,7 @@ class EditCategoryDialog(QDialog):
     def _setup_ui(self):
         """Bouwt de UI op."""
         self.setWindowTitle("Bewerk Categorie")
-        self.setMinimumSize(450, 350)
+        self.setMinimumSize(550, 450)
         self.setModal(True)
 
         layout = QVBoxLayout(self)
@@ -326,19 +326,23 @@ class EditCategoryDialog(QDialog):
         datum_str = str(datum)[:10] if datum else "-"
         details_layout.addWidget(QLabel(f"<b>Datum:</b> {datum_str}"))
 
-        # Naam
+        # Naam (met word-wrap voor lange teksten)
         naam = self._transaction.get("naam", "")
         naam_str = str(naam) if naam and str(naam) not in ("nan", "None", "") else "-"
-        details_layout.addWidget(QLabel(f"<b>Naam:</b> {naam_str}"))
+        naam_label = QLabel(f"<b>Naam:</b> {naam_str}")
+        naam_label.setWordWrap(True)
+        details_layout.addWidget(naam_label)
 
-        # Omschrijving
+        # Omschrijving (met word-wrap voor lange teksten)
         omschrijving = self._transaction.get("omschrijving", "")
         omschrijving_str = (
             str(omschrijving)
             if omschrijving and str(omschrijving) not in ("nan", "None", "")
             else "-"
         )
-        details_layout.addWidget(QLabel(f"<b>Omschrijving:</b> {omschrijving_str}"))
+        omschrijving_label = QLabel(f"<b>Omschrijving:</b> {omschrijving_str}")
+        omschrijving_label.setWordWrap(True)
+        details_layout.addWidget(omschrijving_label)
 
         # Bedrag
         bedrag = self._transaction.get("bedrag", 0)
